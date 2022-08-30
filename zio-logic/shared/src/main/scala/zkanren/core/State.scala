@@ -1,18 +1,19 @@
 package zkanren.core
 
-import zio.stm.{TRef, USTM, ZSTM}
+import zio.stm.{STM, TRef, USTM}
 
 import scala.annotation.tailrec
 
 trait State {
   def fresh[A]: USTM[Var[A]]
-  def bind[A](v: Term[A], t: Term[A]): ZSTM[Any, State, State]
+  def bind[A](v: Term[A], t: Term[A]): STM[State, State]
+  def query(qs: Seq[Term[_]]): USTM[Seq[Term[_]]]
 }
 
 object State {
   import BindingOps.Bindings
 
-  def apply(): ZSTM[Any, Nothing, State] =
+  def apply(): USTM[State] =
     for {
       nextVar  <- TRef.make[Long](0)
       bindings <- TRef.make[Bindings](Map.empty)
@@ -20,7 +21,7 @@ object State {
       override def fresh[A]: USTM[Var[A]] =
         nextVar.getAndUpdate(_ + 1).map(Var(_))
 
-      override def bind[A](v: Term[A], t: Term[A]): ZSTM[Any, State, State] =
+      override def bind[A](v: Term[A], t: Term[A]): STM[State, State] =
         bindings
           .modify(b =>
             BindingOps.bind(v, t)(b) match {
@@ -29,6 +30,14 @@ object State {
             }
           )
           .absolve
+
+      override def query(qs: Seq[Term[_]]): USTM[Seq[Term[_]]] =
+        bindings.get.map { bindings =>
+          qs.foldLeft[Seq[Term[_]]](Nil) { case (acc, q) =>
+            val (r, _) = BindingOps.walk(q, Nil)(bindings)
+            acc :+ r
+          }
+        }
     }
 
   private[State] object BindingOps {
@@ -42,7 +51,7 @@ object State {
       }
 
     @tailrec
-    private def walk[A](t: Term[A], seen: Seq[Term[A]])(bindings: Bindings): (Term[A], Seq[Term[A]]) =
+    private[State] def walk[A](t: Term[A], seen: Seq[Term[A]])(bindings: Bindings): (Term[A], Seq[Term[A]]) =
       t match {
         case x: Var[A] =>
           bindings.get(x) match {

@@ -1,8 +1,8 @@
 package zkanren.core
 
-import zio.ZIO
-import zio.stm.ZSTM
-import zio.stream.ZStream
+import zio.{Chunk, ZIO}
+import zio.stm.{USTM, ZSTM}
+import zio.stream.{ZChannel, ZStream}
 
 object Goal {
   type Goal[R, E] = ZStream[R, E, Either[State, State]] => ZStream[R, E, Either[State, State]]
@@ -12,12 +12,6 @@ object Goal {
       case Left(state)  => ZStream.succeed(Left(state))
       case Right(state) => f(state)
     }
-
-  def fresh[R, E, A](f: Var[A] => Goal[R, E]): Goal[R, E] = Goal { state =>
-    ZStream.fromZIO(state.fresh[A].commit).flatMap { newVar =>
-      f(newVar)(ZStream.succeed(Right(state)))
-    }
-  }
 
   def accept[R, E]: Goal[R, E] = identity
   def reject[R, E]: Goal[R, E] = negation
@@ -68,7 +62,34 @@ object Goal {
   def equalZIO[R, E, A](a: ZIO[R, E, A], b: ZIO[R, E, A])(implicit unify: Unify[A]): Goal[R, E] =
     equalStream(ZStream.fromZIO(a), ZStream.fromZIO(b))
 
-  def run[R, E](goal: Goal[R, E]): ZStream[R, E, State] =
-    goal(ZStream.fromZIO(State().map(Right(_)).commit)).collectRight
+  type V1[A]          = Var[A]
+  type V2[A, B]       = (Var[A], Var[B])
+  type V3[A, B, C]    = (Var[A], Var[B], Var[C])
+  type V4[A, B, C, D] = (Var[A], Var[B], Var[C], Var[D])
+
+  def fresh[R, E, A]: (V1[A] => Goal[R, E]) => Goal[R, E] =
+    freshN(_.fresh[A])
+
+  def fresh2[R, E, A, B]: (V2[A, B] => Goal[R, E]) => Goal[R, E] =
+    freshN(s => s.fresh[A] <*> s.fresh[B])
+
+  def fresh3[R, E, A, B, C]: (V3[A, B, C] => Goal[R, E]) => Goal[R, E] =
+    freshN { s =>
+      s.fresh[A]
+        .zip[Any, Nothing, Var[B]](s.fresh)
+        .zip[Any, Nothing, Var[C]](s.fresh)
+    }
+
+  def fresh4[R, E, A, B, C, D]: (V4[A, B, C, D] => Goal[R, E]) => Goal[R, E] =
+    freshN { s =>
+      s.fresh[A]
+        .zip[Any, Nothing, Var[B]](s.fresh)
+        .zip[Any, Nothing, Var[C]](s.fresh)
+        .zip[Any, Nothing, Var[D]](s.fresh)
+    }
+
+  def freshN[R, E, T](k: State => USTM[T])(f: T => Goal[R, E]): Goal[R, E] = Goal { state =>
+    ZStream.fromZIO(k(state).commit).flatMap(f(_)(ZStream.succeed(Right(state))))
+  }
 
 }
