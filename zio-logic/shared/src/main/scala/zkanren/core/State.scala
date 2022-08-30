@@ -7,7 +7,7 @@ import scala.annotation.tailrec
 trait State {
   def fresh[A]: USTM[Var[A]]
   def bind[A](v: Term[A], t: Term[A]): STM[State, State]
-  def query(qs: Seq[Term[_]]): USTM[Seq[Term[_]]]
+  def query(qs: Seq[Var[_]]): USTM[Seq[Term[_]]]
 }
 
 object State {
@@ -31,7 +31,7 @@ object State {
           )
           .absolve
 
-      override def query(qs: Seq[Term[_]]): USTM[Seq[Term[_]]] =
+      override def query(qs: Seq[Var[_]]): USTM[Seq[Term[_]]] =
         bindings.get.map { bindings =>
           qs.foldLeft[Seq[Term[_]]](Nil) { case (acc, q) =>
             val (r, _) = BindingOps.walk(q, Nil)(bindings)
