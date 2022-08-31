@@ -1,6 +1,6 @@
 package zkanren.core
 
-import zio.stm.{STM, TRef, USTM}
+import zio.stm.{STM, TRef, USTM, ZSTM}
 
 import scala.annotation.tailrec
 
@@ -22,18 +22,25 @@ object State {
       bindings
         .modify(b =>
           BindingOps.bind(v, t)(b) match {
-            case Left(binds)  => Left(this)  -> binds
-            case Right(binds) => Right(this) -> binds
+            case Left(binds)  =>
+              false -> binds
+            case Right(binds) =>
+              true -> binds
           }
         )
-        .absolve
+        .flatMap {
+          case true => ZSTM.succeed(this)
+          case _    => branch.flatMap(ZSTM.fail)
+        }
 
     override def query(qs: Seq[Var[_]]): USTM[Seq[Term[_]]] =
       bindings.get.map { bindings =>
-        qs.foldLeft[Seq[Term[_]]](Nil) { case (acc, q) =>
+        val x = qs.foldLeft[Seq[Term[_]]](Nil) { case (acc, q) =>
           val (r, _) = BindingOps.walk(q, Nil)(bindings)
           acc :+ r
         }
+        println(s"Values for ${qs} ==> ${x} at ${bindings}")
+        x
       }
 
     override def branch: USTM[State] = for {
@@ -65,6 +72,7 @@ object State {
       t match {
         case x: Var[A] =>
           bindings.get(x) match {
+            case Some(t: Val[A])            => (t, seen)
             case Some(y: Var[A] @unchecked) => walk(y, y +: seen)(bindings)
             case _                          => (x, seen)
           }

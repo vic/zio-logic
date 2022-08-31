@@ -7,7 +7,7 @@ import zio.stream.ZStream
 private[core] trait Equal { self: Goal =>
 
   def equalTerm[R, E, A](a: Term[A], b: Term[A]): Goal[R, E] = Goal { state =>
-    ZStream.fromZIO(state.bind(a, b).commit.either)
+    ZStream.fromZIO(state.bind(a, b).commit.either).debug("EQUAL")
   }
 
   def equal[R, E, A](a: => A, b: => A)(implicit unify: Unify[A]): Goal[R, E] = unify(a, b)
