@@ -5,7 +5,7 @@ import zio.stm.{STM, TRef, USTM, ZSTM}
 
 import scala.annotation.tailrec
 
-trait State {
+sealed trait State {
   def fresh[A]: USTM[LVar[A]]
   def bind[A](v: LTerm[A], t: LTerm[A]): STM[State, State]
   def query(qs: Seq[LVar[_]]): USTM[Seq[LTerm[_]]]
