@@ -9,7 +9,7 @@ private[core] trait Goal extends Fresh with Equal {
   def conjunction[R, E](goal: Goal[R, E], goals: Goal[R, E]*): Goal[R, E] =
     goals.foldLeft(goal) { case (prev, next) =>
       prev.flatMapPar(16) {
-        case Left(state)  => ZStream.succeed(Left(state))
+        case Left(state)  => ZStream.fromZIO(state.branch.map(Left(_)).commit)
         case Right(state) => next.updateService[State](_ => state)
       }
     }
