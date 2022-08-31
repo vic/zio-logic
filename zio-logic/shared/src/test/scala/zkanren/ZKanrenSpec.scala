@@ -1,6 +1,7 @@
 package zkanren
 
 import zio.stream.ZStream
+import zio.test.TestAspect.ignore
 import zio.test._
 import zkanren.api._
 
@@ -12,15 +13,21 @@ object ZKanrenSpec extends ZIOSpecDefault {
     test("should unify simple int terms") {
       val program: ZStream[State, Nothing, LTerm[Int]] =
         query(lvar[Int]) { a =>
-          fresh(lvar[Int] <*> lvar[Int]) { case (x, y) =>
-            a =:= x && y =:= lval(99) && y =:= x
+          fresh(lvar3[Int, Int, Int]) { case (x, y, z) =>
+            a =:= x && y =:= 99 && z =:= x && y =:= z
           }
         }
       program.runHead.map {
         case Some(value: LVal[Int]) => assertTrue(value() == 99)
         case _                      => assertNever("Should have resolved variable to 99")
       }
-    }.provideSomeLayer(emptyStateLayer)
-  )
+    } +
+      test("other") {
+        val x = query(lvar3[Int, Int, Int]) { case (a, b, c) =>
+          ???
+        }
+        assertTrue(false)
+      } @@ ignore
+  ).provideCustomLayer(emptyStateLayer)
 
 }
