@@ -1,6 +1,6 @@
 package zkanren.core
 
-import zio.stm.USTM
+import zio.stm.{URSTM, USTM, ZSTM}
 import zio.stream.ZStream
 
 private[core] trait Fresh { self: Goal =>
@@ -10,69 +10,27 @@ private[core] trait Fresh { self: Goal =>
   type T3[T[+_], A, B, C]    = (T[A], T[B], T[C])
   type T4[T[+_], A, B, C, D] = (T[A], T[B], T[C], T[D])
 
-  def fresh[R, E, A]: (T1[Var, A] => Goal[R, E]) => Goal[R, E] =
-    freshN(_.fresh[A])
+  def lval[A](a: => A): LVal[A]      = LVal(a)
+  def lvar[A]: URSTM[State, LVar[A]] = ZSTM.serviceWithSTM[State](_.fresh[A])
 
-  def fresh2[R, E, A, B]: (T2[Var, A, B] => Goal[R, E]) => Goal[R, E] =
-    freshN(s => s.fresh[A] <*> s.fresh[B])
+  def fresh[R, E, V](v: URSTM[State, V])(x: V => Goal[R, E]): Goal[R, E] =
+    ZStream.unwrap(v.map(x).commit)
 
-  def fresh3[R, E, A, B, C]: (T3[Var, A, B, C] => Goal[R, E]) => Goal[R, E] =
-    freshN { s =>
-      s.fresh[A]
-        .zip[Any, Nothing, Var[B]](s.fresh)
-        .zip[Any, Nothing, Var[C]](s.fresh)
-    }
+  def query[R, E, V, O](v: URSTM[State, V], f: V => Seq[LVar[_]], g: Seq[LTerm[_]] => O)(
+    x: V => Goal[R, E]
+  ): ZStream[R with State, E, O] =
+    ZStream.unwrap(v.map { vars =>
+      x(vars).collectRight.mapZIO(_.query(f(vars)).map(g).commit)
+    }.commit)
 
-  def fresh4[R, E, A, B, C, D]: (T4[Var, A, B, C, D] => Goal[R, E]) => Goal[R, E] =
-    freshN { s =>
-      s.fresh[A]
-        .zip[Any, Nothing, Var[B]](s.fresh)
-        .zip[Any, Nothing, Var[C]](s.fresh)
-        .zip[Any, Nothing, Var[D]](s.fresh)
-    }
+  def query1[R, E, A]: (LVar[A] => Goal[R, E]) => ZStream[R with State, E, T1[LTerm, A]]                         =
+    query[R, E, T1[LVar, A], T1[LTerm, A]](lvar[A], Seq(_), { case Seq(a) => a.asInstanceOf[LTerm[A]] })
 
-  def freshN[R, E, T](k: State => USTM[T])(f: T => Goal[R, E]): Goal[R, E] = Goal { state =>
-    ZStream.fromZIO(k(state).commit).flatMap(f(_)(ZStream.succeed(Right(state))))
-  }
-
-  def query[R, E, A]: (T1[Var, A] => Goal[R, E]) => ZStream[R, E, T1[Term, A]] =
-    queryN[R, E, T1[Var, A], T1[Term, A]](_.fresh[A])(
-      a => Seq(a),
-      { case Seq(a) => a.asInstanceOf[Term[A]] }
-    )
-
-  def query2[R, E, A, B]: (T2[Var, A, B] => Goal[R, E]) => ZStream[R, E, T2[Term, A, B]] =
-    queryN[R, E, T2[Var, A, B], T2[Term, A, B]](s => s.fresh[A].zip(s.fresh[B]))(
+  def query2[R, E, A, B]: (((LVar[A], LVar[B])) => Goal[R, E]) => ZStream[R with State, E, (LTerm[A], LTerm[B])] =
+    query[R, E, T2[LVar, A, B], T2[LTerm, A, B]](
+      lvar[A] <*> lvar[B],
       { case (a, b) => Seq(a, b) },
-      { case Seq(a, b) => (a, b).asInstanceOf[T2[Term, A, B]] }
+      { case Seq(a, b) => (a, b).asInstanceOf }
     )
-
-  def query3[R, E, A, B, C]: (T3[Var, A, B, C] => Goal[R, E]) => ZStream[R, E, T3[Term, A, B, C]] =
-    queryN[R, E, T3[Var, A, B, C], T3[Term, A, B, C]](s =>
-      s.fresh[A]
-        .zip[Any, Nothing, Var[B]](s.fresh)
-        .zip[Any, Nothing, Var[C]](s.fresh)
-    )(
-      { case (a, b, c) => Seq(a, b, c) },
-      { case Seq(a, b, c) => (a, b, c).asInstanceOf[T3[Term, A, B, C]] }
-    )
-
-  def query4[R, E, A, B, C, D]: (T4[Var, A, B, C, D] => Goal[R, E]) => ZStream[R, E, T4[Term, A, B, C, D]] =
-    queryN[R, E, T4[Var, A, B, C, D], T4[Term, A, B, C, D]](s =>
-      s.fresh[A]
-        .zip[Any, Nothing, Var[B]](s.fresh)
-        .zip[Any, Nothing, Var[C]](s.fresh)
-        .zip[Any, Nothing, Var[D]](s.fresh)
-    )(
-      { case (a, b, c, d) => Seq(a, b, c, d) },
-      { case Seq(a, b, c, d) => (a, b, c, d).asInstanceOf[T4[Term, A, B, C, D]] }
-    )
-
-  def queryN[R, E, T, O](
-    k: State => USTM[T]
-  )(x: T => Seq[Var[_]], y: Seq[Term[_]] => O)(f: T => Goal[R, E]): ZStream[R, E, O] =
-    ZStream.fromZIO(State.empty().flatMap(s => k(s).map(s -> _)).commit).flatMap { case (state, vars) =>
-      f(vars)(ZStream.succeed(Right(state))).collectRight.mapZIO(_.query(x(vars)).map(y).commit)
-    }
 
 }

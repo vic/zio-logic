@@ -1,13 +1,14 @@
 package zkanren.core
 
+import zio.{ULayer, ZLayer}
 import zio.stm.{STM, TRef, USTM, ZSTM}
 
 import scala.annotation.tailrec
 
 trait State {
-  def fresh[A]: USTM[Var[A]]
-  def bind[A](v: Term[A], t: Term[A]): STM[State, State]
-  def query(qs: Seq[Var[_]]): USTM[Seq[Term[_]]]
+  def fresh[A]: USTM[LVar[A]]
+  def bind[A](v: LTerm[A], t: LTerm[A]): STM[State, State]
+  def query(qs: Seq[LVar[_]]): USTM[Seq[LTerm[_]]]
   def branch: USTM[State]
 }
 
@@ -15,10 +16,10 @@ object State {
   import BindingOps.Bindings
 
   private def make(nextVar: TRef[Long], bindings: TRef[Bindings]): State = new State {
-    override def fresh[A]: USTM[Var[A]] =
-      nextVar.getAndUpdate(_ + 1).map(Var(_))
+    override def fresh[A]: USTM[LVar[A]] =
+      nextVar.getAndUpdate(_ + 1).map(LVar(_))
 
-    override def bind[A](v: Term[A], t: Term[A]): STM[State, State] =
+    override def bind[A](v: LTerm[A], t: LTerm[A]): STM[State, State] =
       bindings
         .modify(b =>
           BindingOps.bind(v, t)(b) match {
@@ -30,12 +31,12 @@ object State {
         )
         .flatMap {
           case true => ZSTM.succeed(this)
-          case _    => branch.flatMap(ZSTM.fail)
+          case _    => branch.flatMap(ZSTM.fail(_))
         }
 
-    override def query(qs: Seq[Var[_]]): USTM[Seq[Term[_]]] =
+    override def query(qs: Seq[LVar[_]]): USTM[Seq[LTerm[_]]] =
       bindings.get.map { bindings =>
-        val x = qs.foldLeft[Seq[Term[_]]](Nil) { case (acc, q) =>
+        val x = qs.foldLeft[Seq[LTerm[_]]](Nil) { case (acc, q) =>
           val (r, _) = BindingOps.walk(q, Nil)(bindings)
           acc :+ r
         }
@@ -51,16 +52,18 @@ object State {
     } yield make(nextVar, bindings)
   }
 
-  def empty(): USTM[State] =
+  def empty: ULayer[State] = ZLayer.fromZIO(emptyState().commit)
+
+  private def emptyState(): USTM[State] =
     for {
       nextVar  <- TRef.make[Long](0)
       bindings <- TRef.make[Bindings](Map.empty)
     } yield make(nextVar, bindings)
 
   private[State] object BindingOps {
-    type Bindings = Map[Var[_], Term[_]]
+    type Bindings = Map[LVar[_], LTerm[_]]
 
-    private[State] def bind[A](x: Term[A], y: Term[A])(bindings: Bindings): Either[Bindings, Bindings] =
+    private[State] def bind[A](x: LTerm[A], y: LTerm[A])(bindings: Bindings): Either[Bindings, Bindings] =
       bindable(x, y)(bindings) match {
         case Right((x, y)) => Right(bindings + (x -> y))
         case Left(Some(_)) => Right(bindings)
@@ -68,35 +71,35 @@ object State {
       }
 
     @tailrec
-    private[State] def walk[A](t: Term[A], seen: Seq[Term[A]])(bindings: Bindings): (Term[A], Seq[Term[A]]) =
+    private[State] def walk[A](t: LTerm[A], seen: Seq[LTerm[A]])(bindings: Bindings): (LTerm[A], Seq[LTerm[A]]) =
       t match {
-        case x: Var[A] =>
+        case x: LVar[A] =>
           bindings.get(x) match {
-            case Some(t: Val[A])            => (t, seen)
-            case Some(y: Var[A] @unchecked) => walk(y, y +: seen)(bindings)
-            case _                          => (x, seen)
+            case Some(t: LVal[A])            => (t, seen)
+            case Some(y: LVar[A] @unchecked) => walk(y, y +: seen)(bindings)
+            case _                           => (x, seen)
           }
-        case _         => (t, seen)
+        case _          => (t, seen)
       }
 
     // Right means the terms are bindable.
     // Left(Some) means the terms are equal (==) and no binding needs to be done.
     // Left(None) means the terms are not equal and cannot be bound.
-    private type Bindable[A] = Either[Option[Term[A]], (Var[A], Term[A])]
-    private def bindable[A](a: Term[A], b: Term[A])(bindings: Bindings): Bindable[A] = {
+    private type Bindable[A] = Either[Option[LTerm[A]], (LVar[A], LTerm[A])]
+    private def bindable[A](a: LTerm[A], b: LTerm[A])(bindings: Bindings): Bindable[A] = {
       val (aVal, aSeen) = walk(a, Seq(a))(bindings)
       val (bVal, bSeen) = walk(b, Seq(b))(bindings)
 
       (aVal, bVal) match {
-        case (x: Var[A], y: Var[A]) if aSeen.contains(y) || bSeen.contains(x) => Left(None)
+        case (x: LVar[A], y: LVar[A]) if aSeen.contains(y) || bSeen.contains(x) => Left(None)
 
-        case (x: Var[A], y: Var[A]) if x == y     => Left(Some(x))
-        case (x: Val[A], y: Val[A]) if x() == y() => Left(Some(x))
+        case (x: LVar[A], y: LVar[A]) if x == y     => Left(Some(x))
+        case (x: LVal[A], y: LVal[A]) if x() == y() => Left(Some(x))
 
-        case (x: Var[A], y: Var[A]) => Right(x -> y)
-        case (x: Var[A], y: Val[A]) => Right(x -> y)
-        case (x: Val[A], y: Var[A]) => Right(y -> x)
-        case _                      => Left(None)
+        case (x: LVar[A], y: LVar[A]) => Right(x -> y)
+        case (x: LVar[A], y: LVal[A]) => Right(x -> y)
+        case (x: LVal[A], y: LVar[A]) => Right(y -> x)
+        case _                        => Left(None)
       }
     }
 

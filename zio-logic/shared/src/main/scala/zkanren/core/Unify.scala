@@ -9,10 +9,10 @@ trait Unify[-A] {
 }
 
 object Unify {
-  implicit def anyValTerm[A <: AnyVal](a: A): Term[A] = Val(a)
+  implicit def anyValTerm[A <: AnyVal](a: A): LTerm[A] = LVal(a)
 
-  def terms[A]: Unify[Term[A]] = new Unify[Term[A]] {
-    override def apply[R, E](a: => Term[A], b: => Term[A]): Goal[R, E] = Goal.equalTerm[R, E, A](a, b)
+  implicit def unifyTerms[A]: Unify[LTerm[A]] = new Unify[LTerm[A]] {
+    override def apply[R, E](a: => LTerm[A], b: => LTerm[A]): Goal[R, E] = Goal.unifyTerm[R, E, A](a, b)
   }
 
 }
