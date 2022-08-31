@@ -8,37 +8,47 @@ trait State {
   def fresh[A]: USTM[Var[A]]
   def bind[A](v: Term[A], t: Term[A]): STM[State, State]
   def query(qs: Seq[Var[_]]): USTM[Seq[Term[_]]]
+  def branch: USTM[State]
 }
 
 object State {
   import BindingOps.Bindings
 
-  def apply(): USTM[State] =
+  private def make(nextVar: TRef[Long], bindings: TRef[Bindings]): State = new State {
+    override def fresh[A]: USTM[Var[A]] =
+      nextVar.getAndUpdate(_ + 1).map(Var(_))
+
+    override def bind[A](v: Term[A], t: Term[A]): STM[State, State] =
+      bindings
+        .modify(b =>
+          BindingOps.bind(v, t)(b) match {
+            case Left(binds)  => Left(this)  -> binds
+            case Right(binds) => Right(this) -> binds
+          }
+        )
+        .absolve
+
+    override def query(qs: Seq[Var[_]]): USTM[Seq[Term[_]]] =
+      bindings.get.map { bindings =>
+        qs.foldLeft[Seq[Term[_]]](Nil) { case (acc, q) =>
+          val (r, _) = BindingOps.walk(q, Nil)(bindings)
+          acc :+ r
+        }
+      }
+
+    override def branch: USTM[State] = for {
+      currVar   <- nextVar.get
+      currBinds <- bindings.get
+      nextVar   <- TRef.make[Long](currVar)
+      bindings  <- TRef.make[Bindings](currBinds)
+    } yield make(nextVar, bindings)
+  }
+
+  def empty(): USTM[State] =
     for {
       nextVar  <- TRef.make[Long](0)
       bindings <- TRef.make[Bindings](Map.empty)
-    } yield new State {
-      override def fresh[A]: USTM[Var[A]] =
-        nextVar.getAndUpdate(_ + 1).map(Var(_))
-
-      override def bind[A](v: Term[A], t: Term[A]): STM[State, State] =
-        bindings
-          .modify(b =>
-            BindingOps.bind(v, t)(b) match {
-              case Left(binds)  => Left(this)  -> binds
-              case Right(binds) => Right(this) -> binds
-            }
-          )
-          .absolve
-
-      override def query(qs: Seq[Var[_]]): USTM[Seq[Term[_]]] =
-        bindings.get.map { bindings =>
-          qs.foldLeft[Seq[Term[_]]](Nil) { case (acc, q) =>
-            val (r, _) = BindingOps.walk(q, Nil)(bindings)
-            acc :+ r
-          }
-        }
-    }
+    } yield make(nextVar, bindings)
 
   private[State] object BindingOps {
     type Bindings = Map[Var[_], Term[_]]
