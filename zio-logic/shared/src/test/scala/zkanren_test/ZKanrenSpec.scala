@@ -1,4 +1,4 @@
-package zkanren.test
+package zkanren_test
 
 import zio.stream.ZStream
 import zio.test.TestAspect.{ignore, timed}

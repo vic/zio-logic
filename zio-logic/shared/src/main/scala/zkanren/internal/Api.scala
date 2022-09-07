@@ -45,12 +45,12 @@ private[zkanren] trait Api {
   @inline def lvar8[A, B, C, D, E, F, G, H]    = lvar7[A, B, C, D, E, F, G] zip lvar[H]
   @inline def lvar9[A, B, C, D, E, F, G, H, I] = lvar8[A, B, C, D, E, F, G, H] zip lvar[I]
 
-  implicit def unifiableOps[A]: A => Api.UnifiableOps[A]      = Api.UnifiableOps[A] _
-  implicit def goalOps[R, E]: Goal[R, E] => Api.GoalOps[R, E] = Api.GoalOps[R, E] _
+  @inline implicit def unifiableOps[A]: A => Api.UnifiableOps[A]      = Api.UnifiableOps[A] _
+  @inline implicit def goalOps[R, E]: Goal[R, E] => Api.GoalOps[R, E] = Api.GoalOps[R, E] _
 
-  implicit def unifyTerms[A]: Unify[Any, Nothing, LTerm[A], LTerm[A]] = Unify.terms[A]
+  @inline implicit def unifyTerms[A]: Unify[Any, Nothing, LTerm[A], LTerm[A]] = Unify.terms[A]
 
-  implicit def unifyIterables[R, E, A, B](implicit
+  @inline implicit def unifyIterables[R, E, A, B](implicit
     u: Unify[R, E, A, B]
   ): Unify[R, E, IterableOnce[A], IterableOnce[B]] =
     Unify.iterables[R, E, A, B]
