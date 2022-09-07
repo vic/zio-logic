@@ -23,7 +23,10 @@ private[zkanren] trait Api {
   type LVar[+A]  = internal.LVar[A]
   type LVal[+A]  = internal.LVal[A]
 
-  type Goal[-R, +E] = internal.Goal[R, E]
+  type Unify[-A, -B] = internal.Unify[A, B]
+  type Goal[-R, +E]  = internal.Goal[R, E]
+
+  lazy val Unify = internal.Unify
 
   lazy val emptyStateLayer: ULayer[State] = State.empty
 

@@ -1,7 +1,7 @@
 package zkanren.test
 
 import zio.stream.ZStream
-import zio.test.TestAspect.ignore
+import zio.test.TestAspect.{ignore, timed}
 import zio.test._
 import zkanren._
 
@@ -31,7 +31,33 @@ object ZKanrenSpec extends ZIOSpecDefault {
         case Some((a: LVal[Int], b: LVal[Int], c: LVal[Int])) => assertTrue((a(), b(), c()) == (1, 2, 3))
         case x                                                => assertNever(s"Should have resolved sequence ${x}")
       }
+    },
+    test("unification over custom product") {
+
+      case class Person[T[+_]](
+        name: T[String],
+        age: T[Int]
+      )
+
+      implicit val unifyPerson: Unify[Person[LTerm], Person[LTerm]] =
+        new Unify[Person[LTerm], Person[LTerm]] {
+          override def apply[R, E](a: => Person[LTerm], b: => Person[LTerm]): Goal[R, E] = {
+            val (ap, bp) = (a, b)
+            ap.name =:= bp.name && ap.age =:= bp.age
+          }
+        }
+
+      val program = query(lvar2[String, Int]) { case (name, age) =>
+        val a = Person[LTerm](name = name, age = lval(22))
+        val b = Person[LTerm](name = lval("Melo"), age = age)
+        a =:= b
+      }
+
+      program.runHead.map {
+        case Some((a: LVal[String], b: LVal[Int])) => assertTrue((a(), b()) == ("Melo", 22))
+        case x                                     => assertNever(s"Should have resolved product ${x}")
+      }
     }
-  ).provideCustomLayer(emptyStateLayer)
+  ).provideCustomLayer(emptyStateLayer) @@ timed
 
 }

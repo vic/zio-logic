@@ -1,8 +1,5 @@
 package zkanren.internal
 
-import zio.stm.ZSTM
-import zio.stream.ZStream
-
 trait Unify[-A, -B] {
   def apply[R, E](a: => A, b: => B): Goal[R, E]
 }
