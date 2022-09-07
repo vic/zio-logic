@@ -39,7 +39,7 @@ object ZKanrenSpec extends ZIOSpecDefault {
         age: T[Int]
       )
 
-      implicit val unifyPerson: Unify1[Person[LTerm]] = Unify.same[Person[LTerm]] { case (a, b) =>
+      implicit val unifyPerson: Unify1[Any, Nothing, Person[LTerm]] = Unify.one[Person[LTerm]] { case (a, b) =>
         a.name =:= b.name && a.age =:= b.age
       }
 

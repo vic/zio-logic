@@ -5,8 +5,7 @@ import zkanren.internal
 
 private[zkanren] object Api {
   implicit class UnifiableOps[+A](private val a: A) extends AnyVal {
-    @inline def =:=[B](b: B)(implicit unify: Unify[A, B]): Goal[Any, Nothing] =
-      unify.apply[Any, Nothing](a, b)
+    @inline def =:=[R, E, B](b: B)(implicit unify: Unify[R, E, A, B]): Goal[R, E] = unify(a, b)
   }
 
   implicit class GoalOps[R, E](private val a: Goal[R, E]) extends AnyVal {
@@ -23,9 +22,10 @@ private[zkanren] trait Api {
   type LVar[+A]  = internal.LVar[A]
   type LVal[+A]  = internal.LVal[A]
 
-  type Unify1[-A]    = Unify[A, A]
-  type Unify[-A, -B] = internal.Unify[A, B]
-  type Goal[-R, +E]  = internal.Goal[R, E]
+  type Unify1[-R, +E, -A]    = Unify[R, E, A, A]
+  type Unify[-R, +E, -A, -B] = internal.Unify[R, E, A, B]
+
+  type Goal[-R, +E] = internal.Goal[R, E]
 
   lazy val Unify = internal.Unify
 
@@ -45,10 +45,13 @@ private[zkanren] trait Api {
   @inline def lvar8[A, B, C, D, E, F, G, H]    = lvar7[A, B, C, D, E, F, G] zip lvar[H]
   @inline def lvar9[A, B, C, D, E, F, G, H, I] = lvar8[A, B, C, D, E, F, G, H] zip lvar[I]
 
-  implicit def unifyTerms[A]: Unify[LTerm[A], LTerm[A]]       = Unify.terms[A]
   implicit def unifiableOps[A]: A => Api.UnifiableOps[A]      = Api.UnifiableOps[A] _
   implicit def goalOps[R, E]: Goal[R, E] => Api.GoalOps[R, E] = Api.GoalOps[R, E] _
 
-  implicit def unifyIterables[A, B](implicit u: Unify[A, B]): Unify[IterableOnce[A], IterableOnce[B]] =
-    Unify.iterables[A, B]
+  implicit def unifyTerms[A]: Unify[Any, Nothing, LTerm[A], LTerm[A]] = Unify.terms[A]
+
+  implicit def unifyIterables[R, E, A, B](implicit
+    u: Unify[R, E, A, B]
+  ): Unify[R, E, IterableOnce[A], IterableOnce[B]] =
+    Unify.iterables[R, E, A, B]
 }
