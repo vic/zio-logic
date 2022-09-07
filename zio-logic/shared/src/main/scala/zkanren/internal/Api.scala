@@ -23,6 +23,7 @@ private[zkanren] trait Api {
   type LVar[+A]  = internal.LVar[A]
   type LVal[+A]  = internal.LVal[A]
 
+  type Unify1[-A]    = Unify[A, A]
   type Unify[-A, -B] = internal.Unify[A, B]
   type Goal[-R, +E]  = internal.Goal[R, E]
 

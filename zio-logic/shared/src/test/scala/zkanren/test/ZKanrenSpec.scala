@@ -39,17 +39,13 @@ object ZKanrenSpec extends ZIOSpecDefault {
         age: T[Int]
       )
 
-      implicit val unifyPerson: Unify[Person[LTerm], Person[LTerm]] =
-        new Unify[Person[LTerm], Person[LTerm]] {
-          override def apply[R, E](a: => Person[LTerm], b: => Person[LTerm]): Goal[R, E] = {
-            val (ap, bp) = (a, b)
-            ap.name =:= bp.name && ap.age =:= bp.age
-          }
-        }
+      implicit val unifyPerson: Unify1[Person[LTerm]] = Unify.same[Person[LTerm]] { case (a, b) =>
+        a.name =:= b.name && a.age =:= b.age
+      }
 
       val program = query(lvar2[String, Int]) { case (name, age) =>
-        val a = Person[LTerm](name = name, age = lval(22))
-        val b = Person[LTerm](name = lval("Melo"), age = age)
+        val a: Person[LTerm] = Person(name = name, age = lval(22))
+        val b: Person[LTerm] = Person(name = lval("Melo"), age = age)
         a =:= b
       }
 
