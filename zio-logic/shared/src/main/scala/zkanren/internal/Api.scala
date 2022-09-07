@@ -4,10 +4,6 @@ import zio.ULayer
 import zkanren.internal
 
 private[zkanren] object Api {
-  implicit def unifyTerms[A]: Unify[LTerm[A], LTerm[A]] = new Unify[LTerm[A], LTerm[A]] {
-    override def apply[R, E](a: => LTerm[A], b: => LTerm[A]): Goal[R, E] = Goal.unifyTerm[A](a, b)
-  }
-
   implicit class UnifiableOps[+A](private val a: A) extends AnyVal {
     @inline def =:=[B](b: B)(implicit unify: Unify[A, B]): Goal[Any, Nothing] =
       unify.apply[Any, Nothing](a, b)
@@ -45,8 +41,10 @@ private[zkanren] trait Api {
   @inline def lvar8[A, B, C, D, E, F, G, H]    = lvar7[A, B, C, D, E, F, G] zip lvar[H]
   @inline def lvar9[A, B, C, D, E, F, G, H, I] = lvar8[A, B, C, D, E, F, G, H] zip lvar[I]
 
-  implicit def unifyTerms[A]: Unify[LTerm[A], LTerm[A]]       = Api.unifyTerms[A]
+  implicit def unifyTerms[A]: Unify[LTerm[A], LTerm[A]]       = Unify.terms[A]
   implicit def unifiableOps[A]: A => Api.UnifiableOps[A]      = Api.UnifiableOps[A] _
   implicit def goalOps[R, E]: Goal[R, E] => Api.GoalOps[R, E] = Api.GoalOps[R, E] _
 
+  implicit def unifyIterables[A, B](implicit u: Unify[A, B]): Unify[IterableOnce[A], IterableOnce[B]] =
+    Unify.iterables[A, B]
 }

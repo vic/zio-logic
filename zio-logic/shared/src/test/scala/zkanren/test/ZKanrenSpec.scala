@@ -5,12 +5,10 @@ import zio.test.TestAspect.ignore
 import zio.test._
 import zkanren._
 
-import scala.language.implicitConversions
-
 object ZKanrenSpec extends ZIOSpecDefault {
 
   def spec = suite("ZKanren")(
-    test("should unify simple int terms") {
+    test("unification binds variables assigned to other variables until a val is found.") {
       val program: ZStream[State, Nothing, LTerm[Int]] =
         query(lvar[Int]) { a =>
           fresh(lvar3[Int, Int, Int]) { case (x, y, z) =>
@@ -19,15 +17,21 @@ object ZKanrenSpec extends ZIOSpecDefault {
         }
       program.runHead.map {
         case Some(value: LVal[Int]) => assertTrue(value() == 99)
-        case _                      => assertNever("Should have resolved variable to 99")
+        case x                      => assertNever(s"Should have resolved variable to 99. ${x}")
       }
     },
-    test("other") {
-      val x = query(lvar3[Int, Int, Int]) { case (a, b, c) =>
-        ???
+    test("unification over iterables of same length") {
+      val program = query(lvar3[Int, Int, Int]) { case (a, b, c) =>
+        val seq1 = Seq(a, lval(2), c)
+        val seq2 = Seq(lval(1), b, lval(3))
+        seq1 =:= seq2
       }
-      assertTrue(false)
-    } @@ ignore
+
+      program.runHead.map {
+        case Some((a: LVal[Int], b: LVal[Int], c: LVal[Int])) => assertTrue((a(), b(), c()) == (1, 2, 3))
+        case x                                                => assertNever(s"Should have resolved sequence ${x}")
+      }
+    }
   ).provideCustomLayer(emptyStateLayer)
 
 }
