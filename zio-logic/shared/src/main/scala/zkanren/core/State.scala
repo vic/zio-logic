@@ -24,24 +24,19 @@ object State {
         .modify(b =>
           BindingOps.bind(v, t)(b) match {
             case Left(binds)  =>
-              false -> binds
+              branch.flatMap(ZSTM.fail(_)) -> binds
             case Right(binds) =>
-              true -> binds
+              ZSTM.succeed(this) -> binds
           }
         )
-        .flatMap {
-          case true => ZSTM.succeed(this)
-          case _    => branch.flatMap(ZSTM.fail(_))
-        }
+        .flatMap(identity)
 
     override def query(qs: Seq[LVar[_]]): USTM[Seq[LTerm[_]]] =
       bindings.get.map { bindings =>
-        val x = qs.foldLeft[Seq[LTerm[_]]](Nil) { case (acc, q) =>
+        qs.foldLeft[Seq[LTerm[_]]](Nil) { case (acc, q) =>
           val (r, _) = BindingOps.walk(q, Nil)(bindings)
           acc :+ r
         }
-        println(s"Values for ${qs} ==> ${x} at ${bindings}")
-        x
       }
 
     override def branch: USTM[State] = for {

@@ -29,27 +29,19 @@ object api {
   @inline def lvar8[A, B, C, D, E, F, G, H]    = lvar7[A, B, C, D, E, F, G] zip lvar[H]
   @inline def lvar9[A, B, C, D, E, F, G, H, I] = lvar8[A, B, C, D, E, F, G, H] zip lvar[I]
 
-  implicit class LVarOps[A](private val a: URSTM[State, A]) extends AnyVal {
-    @inline def <*>[B](b: URSTM[State, LVar[B]])(implicit
-      z: Zippable[A, LVar[B]]
-    ): ZSTM[State, Nothing, Zippable[A, LVar[B]]#Out] =
-      a.zip[State, Nothing, LVar[B]](b)
+  implicit def unifyTerms[A]: core.Unify[LTerm[A], LTerm[A]] = new core.Unify[LTerm[A], LTerm[A]] {
+    override def apply[R, E](a: => LTerm[A], b: => LTerm[A]): Goal[R, E] = core.Goal.unifyTerm[A](a, b)
   }
 
-  implicit class TermOps[A](private val a: LTerm[A]) extends AnyVal {
-    @inline def =:=(b: LTerm[A])(implicit unify: core.Unify[LTerm[A]]): Goal[Any, Nothing] =
-      unify.apply[Any, Nothing](a, b)
-  }
-
-  implicit class UnifiableOps[A](private val a: A) extends AnyVal {
-    @inline def =:=(b: A)(implicit unify: core.Unify[A]): Goal[Any, Nothing] =
+  implicit class UnifiableOps[+A](private val a: A) extends AnyVal {
+    @inline def =:=[B](b: B)(implicit unify: core.Unify[A, B]): Goal[Any, Nothing] =
       unify.apply[Any, Nothing](a, b)
   }
 
   implicit class GoalOps[R, E](private val a: core.Goal.Goal[R, E]) extends AnyVal {
-    @inline def &&(b: core.Goal.Goal[R, E]) = core.Goal.conjunction()(a, b)
     @inline def ||(b: core.Goal.Goal[R, E]) = core.Goal.disjunction()(a, b)
+    @inline def &&(b: core.Goal.Goal[R, E]) = core.Goal.conjunctionRight()(a, b)
+    @inline def !!(b: core.Goal.Goal[R, E]) = core.Goal.conjunctionLeft()(a, b)
   }
 
-  implicit def anyValTerm[A <: AnyVal](a: A): LTerm[A] = lval(a)
 }

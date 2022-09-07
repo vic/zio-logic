@@ -1,5 +1,6 @@
 package zkanren.core
 
+import zio.{ZIO, ZLayer}
 import zio.stm.{URSTM, ZSTM}
 import zio.stream.ZStream
 
@@ -113,12 +114,17 @@ object Query {
       )(f)
   }
 
-  final class PartiallyApplied[V](private[Query] val v: URSTM[State, V]) extends AnyVal {
+  final class PartiallyApplied[V](private[Query] val makeVars: URSTM[State, V]) extends AnyVal {
     def toStream[R, E, O](f: V => Seq[LVar[_]], g: Seq[LTerm[_]] => O)(
-      x: V => Goal[R, E]
-    ): ZStream[R with State, E, O] =
-      ZStream.unwrap(v.map { vars =>
-        x(vars).collectRight.mapZIO(_.query(f(vars)).map(g).commit)
-      }.commit)
+      makeGoal: V => Goal[R, E]
+    ): ZStream[R with State, E, O] = {
+      val m = for {
+        state <- ZSTM.service[State]
+        vars  <- makeVars
+        stream = makeGoal(vars)(state).collectRight.mapZIO(_.query(f(vars)).map(g).commit)
+      } yield stream
+      ZStream.unwrap(m.commit)
+    }
+
   }
 }
