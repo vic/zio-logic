@@ -1,4 +1,4 @@
-package zkanren.core
+package zkanren.internal
 
 import zio.{ULayer, ZLayer}
 import zio.stm.{STM, TRef, USTM, ZSTM}

@@ -1,9 +1,9 @@
-package zkanren.core
+package zkanren.internal
 
 import zio.stm.{URSTM, ZSTM}
 import zio.stream.ZStream
 
-private[core] trait Query { self: GoalMixin =>
+private[internal] trait Query { self: GoalMixin =>
   def query[V](v: URSTM[State, V]): Query.PartiallyApplied[V] = new Query.PartiallyApplied[V](v)
 }
 

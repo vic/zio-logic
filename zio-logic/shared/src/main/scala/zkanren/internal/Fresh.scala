@@ -1,10 +1,10 @@
-package zkanren.core
+package zkanren.internal
 
 import zio.ZLayer
 import zio.stm.{URSTM, ZSTM}
 import zio.stream.ZStream
 
-private[core] trait Fresh { self: GoalMixin =>
+private[internal] trait Fresh { self: GoalMixin =>
   def lval[A](a: => A): LVal[A]      = LVal(a)
   def lvar[A]: URSTM[State, LVar[A]] = ZSTM.serviceWithSTM[State](_.fresh[A])
 

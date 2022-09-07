@@ -1,11 +1,11 @@
-package zkanren.core
+package zkanren.internal
 
 import zio.stream.ZStream
 
 trait Goal[-R, +E] extends (State => ZStream[R, E, Either[State, State]])
 
-object Goal                   extends GoalMixin
-private[core] trait GoalMixin extends Fresh with Query with Equal {
+object Goal                       extends GoalMixin
+private[internal] trait GoalMixin extends Fresh with Query with Equal {
 
   def conjunctionRight[R, E](n: Int = 16)(goal: Goal[R, E], goals: Goal[R, E]*): Goal[R, E] = { state =>
     goals.foldLeft(goal(state)) { case (prev, next) =>

@@ -3,7 +3,7 @@ package zkanren
 import zio.stream.ZStream
 import zio.test.TestAspect.ignore
 import zio.test._
-import zkanren.api._
+import zkanren._
 
 import scala.language.implicitConversions
 

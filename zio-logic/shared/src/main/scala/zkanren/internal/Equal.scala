@@ -1,8 +1,8 @@
-package zkanren.core
+package zkanren.internal
 
 import zio.stream.ZStream
 
-private[core] trait Equal { self: GoalMixin =>
+private[internal] trait Equal { self: GoalMixin =>
 
   def unifyTerm[A](a: LTerm[A], b: LTerm[A]): Goal[Any, Nothing] = { state =>
     ZStream.fromZIO(state.bind(a, b).either.commit)
