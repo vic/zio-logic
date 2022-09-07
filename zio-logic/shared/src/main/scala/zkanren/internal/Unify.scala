@@ -23,7 +23,7 @@ object Unify {
       case _                  => Goal.left
     }
 
-    Goal.sequence()(goals)
+    Goal.bind()(goals)
   }
 
 }
