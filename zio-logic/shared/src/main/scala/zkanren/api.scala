@@ -1,8 +1,5 @@
 package zkanren
 
-import zio.Zippable
-import zio.stm.{URSTM, ZSTM}
-
 import scala.language.implicitConversions
 
 object api {
@@ -11,7 +8,7 @@ object api {
   type LVar[+A]  = core.LVar[A]
   type LVal[+A]  = core.LVal[A]
 
-  type Goal[-R, +E] = core.Goal.Goal[R, E]
+  type Goal[-R, +E] = core.Goal[R, E]
 
   lazy val emptyStateLayer = core.State.empty
 
@@ -38,10 +35,10 @@ object api {
       unify.apply[Any, Nothing](a, b)
   }
 
-  implicit class GoalOps[R, E](private val a: core.Goal.Goal[R, E]) extends AnyVal {
-    @inline def ||(b: core.Goal.Goal[R, E]) = core.Goal.disjunction()(a, b)
-    @inline def &&(b: core.Goal.Goal[R, E]) = core.Goal.conjunctionRight()(a, b)
-    @inline def !!(b: core.Goal.Goal[R, E]) = core.Goal.conjunctionLeft()(a, b)
+  implicit class GoalOps[R, E](private val a: Goal[R, E]) extends AnyVal {
+    @inline def ||(b: Goal[R, E]) = core.Goal.disjunction()(a, b)
+    @inline def &&(b: Goal[R, E]) = core.Goal.conjunctionRight()(a, b)
+    @inline def !!(b: Goal[R, E]) = core.Goal.conjunctionLeft()(a, b)
   }
 
 }

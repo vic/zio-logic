@@ -70,8 +70,8 @@ object State {
       t match {
         case x: LVar[A] =>
           bindings.get(x) match {
-            case Some(t: LVal[A])            => (t, seen)
-            case Some(y: LVar[A] @unchecked) => walk(y, y +: seen)(bindings)
+            case Some(t: LVal[A @unchecked]) => (t, seen)
+            case Some(y: LVar[A @unchecked]) => walk(y, y +: seen)(bindings)
             case _                           => (x, seen)
           }
         case _          => (t, seen)

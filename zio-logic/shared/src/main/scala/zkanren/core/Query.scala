@@ -1,15 +1,13 @@
 package zkanren.core
 
-import zio.{ZIO, ZLayer}
 import zio.stm.{URSTM, ZSTM}
 import zio.stream.ZStream
 
-private[core] trait Query { self: Goal =>
+private[core] trait Query { self: GoalMixin =>
   def query[V](v: URSTM[State, V]): Query.PartiallyApplied[V] = new Query.PartiallyApplied[V](v)
 }
 
 object Query {
-  import Goal._
 
   implicit class Query1[A](private val p: PartiallyApplied[LVar[A]]) {
     def apply[R, E](f: LVar[A] => Goal[R, E]): ZStream[R with State, E, LTerm[A]] =
@@ -115,7 +113,7 @@ object Query {
   }
 
   final class PartiallyApplied[V](private[Query] val makeVars: URSTM[State, V]) extends AnyVal {
-    def toStream[R, E, O](f: V => Seq[LVar[_]], g: Seq[LTerm[_]] => O)(
+    def toStream[R, E, O](f: V => Seq[LVar[_]], g: PartialFunction[Seq[LTerm[_]], O])(
       makeGoal: V => Goal[R, E]
     ): ZStream[R with State, E, O] = {
       val m = for {

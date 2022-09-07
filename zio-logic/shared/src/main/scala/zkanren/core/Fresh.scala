@@ -1,10 +1,10 @@
 package zkanren.core
 
+import zio.ZLayer
 import zio.stm.{URSTM, ZSTM}
 import zio.stream.ZStream
-import zio.{ZEnvironment, ZIO, ZLayer}
 
-private[core] trait Fresh { self: Goal =>
+private[core] trait Fresh { self: GoalMixin =>
   def lval[A](a: => A): LVal[A]      = LVal(a)
   def lvar[A]: URSTM[State, LVar[A]] = ZSTM.serviceWithSTM[State](_.fresh[A])
 
@@ -12,7 +12,6 @@ private[core] trait Fresh { self: Goal =>
 }
 
 object Fresh {
-  import Goal.Goal
 
   final class PartiallyApplied[V](private val v: URSTM[State, V]) extends AnyVal {
     def apply[R, E](x: V => Goal[R, E]): Goal[R, E] = { state =>
