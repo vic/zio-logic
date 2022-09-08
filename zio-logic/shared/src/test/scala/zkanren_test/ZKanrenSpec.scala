@@ -10,8 +10,8 @@ object ZKanrenSpec extends ZIOSpecDefault {
   def spec = suite("ZKanren")(
     test("unification binds variables assigned to other variables until a val is found.") {
       val program: ZStream[State, Nothing, LTerm[Int]] =
-        query(lvar[Int]) { a =>
-          fresh(lvar3[Int, Int, Int]) { case (x, y, z) =>
+        query1[Int] { a =>
+          fresh3[Int, Int, Int] { case (x, y, z) =>
             a =:= x && y =:= lval(99) && z =:= x && y =:= z
           }
         }
@@ -21,7 +21,7 @@ object ZKanrenSpec extends ZIOSpecDefault {
       }
     },
     test("unification over iterables of same length") {
-      val program = query(lvar3[Int, Int, Int]) { case (a, b, c) =>
+      val program = query3[Int, Int, Int] { case (a, b, c) =>
         val seq1 = Seq(a, lval(2), c)
         val seq2 = Seq(lval(1), b, lval(3))
         seq1 =:= seq2
@@ -43,7 +43,7 @@ object ZKanrenSpec extends ZIOSpecDefault {
         a.name =:= b.name && a.age =:= b.age
       }
 
-      val program = query(lvar2[String, Int]) { case (name, age) =>
+      val program = query2[String, Int] { case (name, age) =>
         val a: Person[LTerm] = Person(name = name, age = lval(22))
         val b: Person[LTerm] = Person(name = lval("Melo"), age = age)
         a =:= b
