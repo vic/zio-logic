@@ -2,7 +2,7 @@ package zkanren.internal
 
 trait Unify[-R, +E, -A, -B] extends ((A, B) => Goal[R, E])
 
-object Unify {
+private[internal] object Unify {
 
   @inline def one[A]: PartiallyApplied[A, A]      = new PartiallyApplied[A, A]
   @inline def apply[A, B]: PartiallyApplied[A, B] = new PartiallyApplied[A, B]

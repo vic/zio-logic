@@ -12,7 +12,7 @@ sealed trait State {
   def branch: USTM[State]
 }
 
-object State {
+private[internal] object State {
   import BindingOps.Bindings
 
   private def make(nextVar: TRef[Long], bindings: TRef[Bindings]): State = new State {

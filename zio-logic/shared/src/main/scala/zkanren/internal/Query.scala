@@ -7,7 +7,7 @@ private[internal] trait Query { self: GoalMixin =>
   def query[V](v: URSTM[State, V]): Query.PartiallyApplied[V] = new Query.PartiallyApplied[V](v)
 }
 
-object Query {
+private[internal] object Query {
 
   implicit class Query1[A](private val p: PartiallyApplied[LVar[A]]) {
     def apply[R, E](f: LVar[A] => Goal[R, E]): ZStream[R with State, E, LTerm[A]] =

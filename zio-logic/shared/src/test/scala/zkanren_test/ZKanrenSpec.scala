@@ -20,6 +20,16 @@ object ZKanrenSpec extends ZIOSpecDefault {
         case x                      => assertNever(s"Should have resolved variable to 99. ${x}")
       }
     },
+    test("unification") {
+      val program =
+        query2[Int, Int] { case (a, b) =>
+          a =:= b && b =:= lval(3)
+        }
+      program.runHead.map {
+        case Some((a: LVal[Int], b: LVal[Int])) => assertTrue((a(), b()) == (3, 3))
+        case x                                  => assertNever(s"Should have resolved variable to 99. ${x}")
+      }
+    },
     test("unification over iterables of same length") {
       val program = query3[Int, Int, Int] { case (a, b, c) =>
         val seq1 = Seq(a, lval(2), c)
