@@ -126,7 +126,7 @@ Now while you were working on this great improvement, it's quite likely that oth
 To do that, use the `git pull` command:
 
 ```bash
-git pull git@github.com:zio/zio.git master
+git pull git@github.com:zio/zio.git main
 ```
 
 You may get a warning from Git that some files conflicted. Don't worry! That just means you and another contributor edited the same parts of the same files.
@@ -165,7 +165,7 @@ sbt docs/docusaurusCreateSite
 
 (If you get an error about _Jekyll_, that means all the code examples work and you can ignore the rest.)
 
-Finally, if you are up-to-date with master, all your tests are passing, you have properly formatted your code, and the microsite builds properly, then it's time to submit your work for review!
+Finally, if you are up-to-date with main, all your tests are passing, you have properly formatted your code, and the microsite builds properly, then it's time to submit your work for review!
 
 ### Create a Pull Request
 
