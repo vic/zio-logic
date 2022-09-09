@@ -1,7 +1,7 @@
 package zkanren.internal
 
-import zio.{ULayer, ZLayer}
 import zio.stm.{STM, TRef, USTM, ZSTM}
+import zio.{ULayer, ZLayer}
 
 import scala.annotation.tailrec
 

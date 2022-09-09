@@ -1,8 +1,8 @@
 package zkanren.internal
 
-import zio.{ZIO, ZLayer}
 import zio.stm.{URSTM, ZSTM}
-import zio.stream.{ZChannel, ZStream}
+import zio.stream.ZChannel
+import zio.{ZIO, ZLayer}
 
 private[internal] object Fresh {
   def lvar[A]: URSTM[State, LVar[A]]                          = ZSTM.serviceWithSTM[State](_.fresh[A])

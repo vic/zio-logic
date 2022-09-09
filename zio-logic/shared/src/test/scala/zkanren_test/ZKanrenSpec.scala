@@ -1,20 +1,20 @@
 package zkanren_test
 
-import zio.{Chunk, Trace, ZIO}
+import zio.ZIO
 import zio.stream.ZStream
-import zio.test.Spec.TestCase
-import zio.test.TestAspect.{ignore, sequential, timed}
-import zio.test._
+import zio.test.Assertion.assertion
+import zio.test.TestAspect.timed
+import zio.test.{TestResult, ZIOSpecDefault, assert, assertTrue}
 import zkanren._
 
-import scala.reflect.{ClassTag, classTag}
+import scala.reflect.classTag
 
 object ZKanrenSpec extends ZIOSpecDefault {
 
   def testRunEmpty(program: ZStream[State, Nothing, Any]): ZIO[State, Nothing, TestResult] =
     program.runHead.map(head => assertTrue(head.isEmpty))
 
-  def testRunSingle[T: ClassTag](
+  def testRunSingle[T](
     program: ZStream[State, Nothing, Any]
   )(test: T => TestResult): ZIO[State, Nothing, TestResult] =
     program.runHead.map {
@@ -22,7 +22,7 @@ object ZKanrenSpec extends ZIOSpecDefault {
         test(t)
 
       case x =>
-        assert(x)(Assertion.assertion("Unexpected first result")(_ => false))
+        assert(x)(assertion("Unexpected first result")(_ => false))
     }
 
   private val testEmptyUnification =

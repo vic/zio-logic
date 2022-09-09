@@ -1,6 +1,6 @@
 package zkanren.internal
 
-import zio.stm.{URSTM, ZSTM}
+import zio.stm.URSTM
 import zio.stream.ZStream
 
 private[internal] object Query {
