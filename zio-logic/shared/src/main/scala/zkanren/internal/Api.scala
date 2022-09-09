@@ -9,12 +9,6 @@ private[zkanren] object Api {
     @inline def =:=[R, E, B](b: B)(implicit unify: Unify[R, E, A, B]): Goal[R, E] = unify(a, b)
   }
 
-  implicit class GoalOps[R, E](private val a: Goal[R, E]) extends AnyVal {
-    @inline def ||(b: Goal[R, E]) = Goal.mplus()(Seq(a, b))
-    @inline def &&(b: Goal[R, E]) = Goal.bind()(Seq(a, b))
-    @inline def !!(b: Goal[R, E]) = Goal.bind(onRight = false)(Seq(a, b))
-  }
-
   trait Exports {
     type State     = internal.State
     type LTerm[+A] = internal.LTerm[A]
@@ -28,9 +22,8 @@ private[zkanren] object Api {
 
     lazy val Unify = internal.Unify
 
-    lazy val emptyStateLayer: ULayer[State]                             = State.empty
-    @inline implicit def unifyOps[A]: A => Api.UnifyOps[A]              = Api.UnifyOps[A] _
-    @inline implicit def goalOps[R, E]: Goal[R, E] => Api.GoalOps[R, E] = Api.GoalOps[R, E] _
+    lazy val emptyStateLayer: ULayer[State]                = State.empty
+    @inline implicit def unifyOps[A]: A => Api.UnifyOps[A] = Api.UnifyOps[A] _
 
     @inline implicit def unifyTerms[A]: Unify[Any, Nothing, LTerm[A], LTerm[A]] = Unify.terms[A]
 
@@ -41,9 +34,9 @@ private[zkanren] object Api {
   }
 
   trait FreshQuery {
-    @inline def lval[A] = Goal.lval[A] _
+    @inline def lval[A] = LVal[A] _
 
-    @inline def lvar[A]                          = Goal.lvar[A]
+    @inline def lvar[A]                          = Fresh.lvar[A]
     @inline def lvar2[A, B]                      = lvar[A] zip lvar[B]
     @inline def lvar3[A, B, C]                   = lvar2[A, B] zip lvar[C]
     @inline def lvar4[A, B, C, D]                = lvar3[A, B, C] zip lvar[D]
@@ -53,7 +46,7 @@ private[zkanren] object Api {
     @inline def lvar8[A, B, C, D, E, F, G, H]    = lvar7[A, B, C, D, E, F, G] zip lvar[H]
     @inline def lvar9[A, B, C, D, E, F, G, H, I] = lvar8[A, B, C, D, E, F, G, H] zip lvar[I]
 
-    @inline def fresh[V]                          = Goal.fresh[V] _
+    @inline def fresh[V]                          = Fresh.fresh[V] _
     @inline def fresh1[A]                         = fresh(lvar[A])
     @inline def fresh2[A, B]                      = fresh(lvar2[A, B])
     @inline def fresh3[A, B, C]                   = fresh(lvar3[A, B, C])
@@ -64,7 +57,7 @@ private[zkanren] object Api {
     @inline def fresh8[A, B, C, D, E, F, G, H]    = fresh(lvar8[A, B, C, D, E, F, G, H])
     @inline def fresh9[A, B, C, D, E, F, G, H, I] = fresh(lvar9[A, B, C, D, E, F, G, H, I])
 
-    @inline def query[V]                          = Goal.query[V] _
+    @inline def query[V]                          = Query.query[V] _
     @inline def query1[A]                         = query(lvar[A])
     @inline def query2[A, B]                      = query(lvar2[A, B])
     @inline def query3[A, B, C]                   = query(lvar3[A, B, C])
@@ -77,7 +70,14 @@ private[zkanren] object Api {
   }
 
   trait MicroKanren {
+    def conj[R, E](g: Goal[R, E], gs: Goal[R, E]*): Goal[R, E] =
+      Goal.conj[R, E](g +: gs)
+
+    def disj[R, E](g: Goal[R, E], gs: Goal[R, E]*): Goal[R, E] =
+      Goal.disj[R, E](g +: gs)
+
     def conde[R, E](cases: IterableOnce[Goal[R, E]]*): Goal[R, E] =
-      Goal.mplus()(cases.iterator.map(Goal.bind()))
+      Goal.disj[R, E](cases.iterator.map(Goal.conj[R, E]))
+
   }
 }

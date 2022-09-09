@@ -20,10 +20,10 @@ private[internal] object Unify {
 
     val goals: Iterator[Goal[R, E]] = ab.map {
       case (Some(a), Some(b)) => u(a, b)
-      case _                  => Goal.left
+      case _                  => Goal.fail
     }
 
-    Goal.bind()(goals)
+    Goal.conj(goals)
   }
 
 }

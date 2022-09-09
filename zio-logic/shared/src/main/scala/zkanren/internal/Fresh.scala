@@ -1,19 +1,13 @@
 package zkanren.internal
 
-import zio.ZLayer
+import zio.{ZIO, ZLayer}
 import zio.stm.{URSTM, ZSTM}
-import zio.stream.ZStream
-
-private[internal] trait Fresh { self: GoalMixin =>
-  def lval[A](a: => A): LVal[A]      = LVal(a)
-  def lvar[A]: URSTM[State, LVar[A]] = ZSTM.serviceWithSTM[State](_.fresh[A])
-
-  def fresh[V](v: URSTM[State, V]): Fresh.PartiallyApplied[V] = new Fresh.PartiallyApplied[V](v)
-
-//  def defo[V](v: URSTM[State, V]): Fresh.Defo[V] = new Fresh.Defo[V](v)
-}
+import zio.stream.{ZChannel, ZStream}
 
 private[internal] object Fresh {
+  def lvar[A]: URSTM[State, LVar[A]]                          = ZSTM.serviceWithSTM[State](_.fresh[A])
+  def fresh[V](v: URSTM[State, V]): Fresh.PartiallyApplied[V] = new Fresh.PartiallyApplied[V](v)
+
 //  final class Defo[V](private val v: URSTM[State, V]) extends AnyVal {}
 //  object Defo {
 //    implicit def defoUnify[R, E, V](implicit u: Unify[R, E, V, V]): Unify[R, E, V, Defo[V]] = (v1: V, v2: Defo[V]) =>
@@ -21,13 +15,21 @@ private[internal] object Fresh {
 //  }
 
   final class PartiallyApplied[V](private val v: URSTM[State, V]) extends AnyVal {
-    def apply[R, E](x: V => Goal[R, E]): Goal[R, E] = { state =>
-      ZStream.unwrap {
-        v.map(x)
-          .flatMap(ZSTM.serviceWith[State](_))
-          .commit
-          .provideSomeLayer(ZLayer.succeed(state))
-      }
+    def apply[R, E](x: V => Goal[R, E]): Goal[R, E] = {
+      def makeGoal(state: State): ZIO[Any, Nothing, Goal[R, E]] =
+        v.map(x).commit.provideSomeLayer(ZLayer.succeed(state))
+
+      lazy val channel: Goal.Chan[R, E] = ZChannel.readWithCause(
+        in = { s =>
+          ZChannel.unwrap(makeGoal(s).map { goal =>
+            ZChannel.write(s) >>> goal.toChannel
+          })
+        },
+        halt = { e => ZChannel.unit },
+        done = { x => ZChannel.unit }
+      )
+
+      Goal.fromChannel(channel)
     }
   }
 }

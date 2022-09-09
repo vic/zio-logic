@@ -3,11 +3,8 @@ package zkanren.internal
 import zio.stm.{URSTM, ZSTM}
 import zio.stream.ZStream
 
-private[internal] trait Query { self: GoalMixin =>
-  def query[V](v: URSTM[State, V]): Query.PartiallyApplied[V] = new Query.PartiallyApplied[V](v)
-}
-
 private[internal] object Query {
+  def query[V](v: URSTM[State, V]): Query.PartiallyApplied[V] = new Query.PartiallyApplied[V](v)
 
   implicit class Query1[A](private val p: PartiallyApplied[LVar[A]]) {
     def apply[R, E](f: LVar[A] => Goal[R, E]): ZStream[R with State, E, LTerm[A]] =
@@ -117,9 +114,8 @@ private[internal] object Query {
       makeGoal: V => Goal[R, E]
     ): ZStream[R with State, E, O] = {
       val m = for {
-        state <- ZSTM.service[State]
         vars  <- makeVars
-        stream = makeGoal(vars)(state).collectRight.mapZIO(_.query(f(vars)).map(g).commit)
+        stream = makeGoal(vars).toStream.collectRight.mapZIO(_.query(f(vars)).map(g).commit)
       } yield stream
       ZStream.unwrap(m.commit)
     }

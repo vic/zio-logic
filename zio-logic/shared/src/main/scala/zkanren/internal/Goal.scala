@@ -1,47 +1,98 @@
 package zkanren.internal
 
-import zio.Chunk
-import zio.stream.{ZSink, ZStream}
+import zio.stream.{ZChannel, ZStream}
+import zio.{Chunk, UIO}
 
-trait Goal[-R, +E] extends (State => ZStream[R, E, Either[State, State]])
+final class Goal[-R, +E] private[Goal] (private val channel: Goal.Chan[R, E]) extends AnyVal { self =>
+  @inline def &&[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
+    and(goal)
 
-private[internal] object Goal extends GoalMixin
+  @inline def ||[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
+    or(goal)
 
-private[internal] trait GoalMixin extends Fresh with Query with Equal {
+  @inline def and[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
+    pipeSuccessTo(goal)
 
-  def left[R, E]: Goal[R, E]  = state => ZStream.succeed(Left(state))
-  def right[R, E]: Goal[R, E] = state => ZStream.succeed(Right(state))
+  def or[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
+    Goal.fromChannel(channel.zipParRight(goal.channel))
 
-  def mplus[R, E](n: Int = 16)(goals: IterableOnce[Goal[R, E]]): Goal[R, E] = { state =>
-    ZStream.fromChunk(Chunk.fromIterator(goals.iterator)).flatMapPar(n)(_(state))
+  def orElse[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
+    pipeFailureTo(goal)
+
+  def pipeFailureTo[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] = {
+    val lefts = channel.collect { case Left(e) => e }
+    val ch    = lefts >>> goal.channel
+    Goal.fromChannel(ch)
   }
 
-  def bind[R, E](onRight: Boolean = true, n: Int = 16)(goals: IterableOnce[Goal[R, E]]): Goal[R, E] = {
-    val onLeft = !onRight
-    val it     = goals.iterator
-
-    lazy val cont: Either[State, State] => ZStream[R, E, Either[State, State]] = {
-      case Right(state) if onRight && it.hasNext => it.next()(state).flatMapPar(n)(cont)
-      case Left(state) if onLeft && it.hasNext   => it.next()(state).flatMapPar(n)(cont)
-      case Right(state) if onRight               => right(state)
-      case Left(state) if onLeft                 => left(state)
-      case e if onRight                          => e.fold(left, left)
-      case e if onLeft                           => e.fold(right, right)
-    }
-
-    val initial = if (onRight) right else left
-    initial(_).flatMapPar(n)(cont)
+  def pipeSuccessTo[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] = {
+    val rights = channel.collect { case Right(e) => e }
+    val ch     = rights >>> goal.channel
+    Goal.fromChannel(ch)
   }
 
-  def bindStream[R, E](onRight: Boolean = true, n: Int = 16)(s: ZStream[R, E, Goal[R, E]]): Goal[R, E] = {
-    val onLeft  = !onRight
-    val initial = if (onRight) right else left
-    initial(_).flatMapPar(n) {
-      case Right(state) if onRight => s.flatMapPar(n)(_(state))
-      case Left(state) if onLeft   => s.flatMapPar(n)(_(state))
-      case Right(state)            => right(state)
-      case Left(state)             => left(state)
+  def toChannel: Goal.Chan[R, E] = channel
+
+  def toStream: ZStream[R with State, E, Either[State, State]] = {
+    lazy val chan = ZChannel.serviceWithChannel[State] { state =>
+      ZChannel.write(state) >>> channel.mapOut(Chunk.succeed)
     }
+    ZStream.fromChannel(chan)
+  }
+
+}
+
+object Goal {
+
+  /**
+   * A goal channel transforms input states into either unified or not-unifiable states.
+   */
+  type Chan[-R, +E] = ZChannel[R, Any, State, Any, E, Either[State, State], Any]
+
+  def fromChannel[R, E](ch: Chan[R, E]): Goal[R, E] = new Goal(ch)
+
+  def fail[R, E]: Goal[R, E] = {
+    lazy val channel: Chan[R, E] = ZChannel.readWithCause[R, Any, State, Any, E, Either[State, State], Any](
+      in = ZChannel.write(_).mapOut(Left(_)) *> channel,
+      halt = _ => ZChannel.unit,
+      done = ZChannel.succeedNow(_)
+    )
+    Goal.fromChannel(channel)
+  }
+
+  def succeed: Goal[Any, Nothing] = {
+    def channel(): Chan[Any, Nothing] = ZChannel.readWithCause(
+      in = ZChannel.write(_).mapOut(Right(_)) *> channel(),
+      halt = cause => ZChannel.unit,
+      done = pill => ZChannel.unit
+    )
+    Goal.fromChannel(channel())
+  }
+
+  def conj[R, E](goals: IterableOnce[Goal[R, E]]): Goal[R, E] =
+    goals.iterator.reduceLeft[Goal[R, E]](_ pipeSuccessTo _)
+
+  def disj[R, E](goals: IterableOnce[Goal[R, E]]): Goal[R, E] = {
+    lazy val chunk = Chunk.fromIterator(goals.iterator.map(_.channel))
+    val ch         = ZChannel.mergeAll(ZChannel.writeChunk(chunk), n = 16)
+    Goal.fromChannel(ch)
+  }
+
+  def unifyTerm[A](a: LTerm[A], b: LTerm[A]): Goal[Any, Nothing] = {
+    def unifyEffect(state: State): UIO[Either[State, State]] =
+      state.bind(a, b).commit.either
+
+    def channel(): Chan[Any, Nothing] =
+      ZChannel.readWithCause(
+        in = { state =>
+          println(s"GOT UNIFIY ST ${state}")
+          ZChannel.write(state).mapOutZIO(unifyEffect) *> channel()
+        },
+        halt = _ => ZChannel.unit,
+        done = _ => ZChannel.unit
+      )
+
+    Goal.fromChannel(channel())
   }
 
 }
