@@ -14,10 +14,10 @@ object ZKanrenSpec extends ZIOSpecDefault {
         val program: ZStream[State, Nothing, LTerm[Int]] =
           query1[Int] { a =>
             fresh3[Int, Int, Int] { case (x, y, z) =>
-              conj(
-                a =:= y,
-                y =:= lval(99)
-              )
+              a =:= z &&
+                x =:= lval(99) &&
+                z =:= y &&
+                x =:= y
             }
           }
         program.runHead.map {

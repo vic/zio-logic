@@ -9,6 +9,14 @@ private[zkanren] object Api {
     @inline def =:=[R, E, B](b: B)(implicit unify: Unify[R, E, A, B]): Goal[R, E] = unify(a, b)
   }
 
+  implicit class GoalOps[-R, +E](private val self: Goal[R, E]) {
+    @inline def &&[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
+      self and goal
+
+    @inline def ||[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
+      self or goal
+  }
+
   trait Exports {
     type State     = internal.State
     type LTerm[+A] = internal.LTerm[A]
@@ -24,6 +32,7 @@ private[zkanren] object Api {
 
     lazy val emptyStateLayer: ULayer[State]                = State.empty
     @inline implicit def unifyOps[A]: A => Api.UnifyOps[A] = Api.UnifyOps[A] _
+    @inline implicit def goalOps[R, E]                     = Api.GoalOps[R, E] _
 
     @inline implicit def unifyTerms[A]: Unify[Any, Nothing, LTerm[A], LTerm[A]] = Unify.terms[A]
 

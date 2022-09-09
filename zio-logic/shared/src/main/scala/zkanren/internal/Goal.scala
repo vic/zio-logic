@@ -4,12 +4,6 @@ import zio.stream.{ZChannel, ZStream}
 import zio.{Chunk, UIO}
 
 final class Goal[-R, +E] private[Goal] (private val channel: Goal.Chan[R, E]) extends AnyVal { self =>
-  @inline def &&[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
-    and(goal)
-
-  @inline def ||[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
-    or(goal)
-
   @inline def and[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
     pipeSuccessTo(goal)
 
@@ -61,12 +55,12 @@ object Goal {
   }
 
   def succeed: Goal[Any, Nothing] = {
-    def channel(): Chan[Any, Nothing] = ZChannel.readWithCause(
-      in = ZChannel.write(_).mapOut(Right(_)) *> channel(),
+    lazy val channel: Chan[Any, Nothing] = ZChannel.readWithCause(
+      in = ZChannel.write(_).mapOut(Right(_)) *> channel,
       halt = cause => ZChannel.unit,
       done = pill => ZChannel.unit
     )
-    Goal.fromChannel(channel())
+    Goal.fromChannel(channel)
   }
 
   def conj[R, E](goals: IterableOnce[Goal[R, E]]): Goal[R, E] =
@@ -82,16 +76,14 @@ object Goal {
     def unifyEffect(state: State): UIO[Either[State, State]] =
       state.bind(a, b).commit.either
 
-    def channel(): Chan[Any, Nothing] =
+    lazy val channel: Chan[Any, Nothing] =
       ZChannel.readWithCause(
-        in = { state =>
-          ZChannel.write(state).mapOutZIO(unifyEffect) *> channel()
-        },
+        in = { state => ZChannel.write(state).mapOutZIO(unifyEffect) *> channel },
         halt = _ => ZChannel.unit,
         done = _ => ZChannel.unit
       )
 
-    Goal.fromChannel(channel())
+    Goal.fromChannel(channel)
   }
 
 }
