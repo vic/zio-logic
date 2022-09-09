@@ -4,6 +4,9 @@
 | --- | --- | --- | --- | --- |
 | [![Project stage][Badge-Stage]][Link-Stage-Page] | [![Build Status][Badge-Circle]][Link-Circle] | [![Release Artifacts][Badge-SonatypeReleases]][Link-SonatypeReleases] | [![Snapshot Artifacts][Badge-SonatypeSnapshots]][Link-SonatypeSnapshots] | [![Badge-Discord]][Link-Discord] |
 
+[![Build history](https://buildstats.info/github/chart/vic/zio-logic?branch=main)](https://github.com/vic/zio-logic/actions)
+
+
 # Summary
 TODO: Tagline
 
