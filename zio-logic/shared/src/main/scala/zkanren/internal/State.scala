@@ -88,8 +88,8 @@ private[internal] object State {
       (aVal, bVal) match {
         case (x: LVar[A], y: LVar[A]) if aSeen.contains(y) || bSeen.contains(x) => Left(None)
 
-        case (x: LVar[A], y: LVar[A]) if x == y     => Left(Some(x))
-        case (x: LVal[A], y: LVal[A]) if x() == y() => Left(Some(x))
+        case (x: LVar[A], y: LVar[A]) if x.variable == y.variable => Left(Some(x))
+        case (x: LVal[A], y: LVal[A]) if x.value == y.value       => Left(Some(x))
 
         case (x: LVar[A], y: LVar[A]) => Right(x -> y)
         case (x: LVar[A], y: LVal[A]) => Right(x -> y)

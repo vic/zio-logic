@@ -1,39 +1,45 @@
 package zkanren_test
 
+import zio.ZIO
 import zio.stream.ZStream
 import zio.test.Assertion._
 import zio.test.TestAspect.timed
 import zio.test._
 import zkanren._
 
+import scala.reflect.{ClassTag, classTag}
+
 object ZKanrenSpec extends ZIOSpecDefault {
+
+  def testRunEmpty(program: ZStream[State, Nothing, Any]): ZIO[State, Nothing, TestResult] =
+    program.runHead.map(head => assertTrue(head.isEmpty))
+
+  def testRunSingle[T: ClassTag](
+    program: ZStream[State, Nothing, Any]
+  )(test: T => TestResult): ZIO[State, Nothing, TestResult] =
+    program.runHead.map {
+      case Some(t: T) if classTag[T].runtimeClass.isInstance(t) =>
+        test(t)
+
+      case x =>
+        assert(x)(Assertion.assertion("Unexpected first result")(_ => false))
+    }
 
   def spec = suite("ZKanren")(
     suite("Unification")(
-      test("unification binds variables assigned to other variables until a val is found.") {
-        val program: ZStream[State, Nothing, LTerm[Int]] =
-          query1[Int] { a =>
-            fresh3[Int, Int, Int] { case (x, y, z) =>
-              a =:= z &&
-                x =:= lval(99) &&
-                z =:= y &&
-                x =:= y
-            }
-          }
-        program.runHead.map {
-          case Some(value: LVal[Int]) => assertTrue(value() == 99)
-          case x                      => assertNever(s"Should have resolved variable to 99. ${x}")
-        }
+      test("empty unification") {
+        val program = query1[Int](a => lval(99) =:= lval(22))
+        testRunEmpty(program)
       },
-      test("unification") {
-        val program =
-          query2[Int, Int] { case (a, b) =>
-            conj(a =:= b, b =:= lval(3))
-          }
-        program.runHead.map {
-          case Some((a: LVal[Int], b: LVal[Int])) => assertTrue((a(), b()) == (3, 3))
-          case x                                  => assertNever(s"Should have resolved variable to 99. ${x}")
+      test("unification of forall values in variable") {
+        val program = query1[Int](a => lval(99) =:= lval(99))
+        testRunSingle[LVar[Int]](program)(v => assertTrue(v.variable == 0L))
+      },
+      test("unification binds variables assigned to other variables until a val is found.") {
+        val program = query1[Int] { a =>
+          fresh3[Int, Int, Int] { case (x, y, z) => a =:= z && x =:= lval(99) && z =:= y && x =:= y }
         }
+        testRunSingle[LVal[Int]](program)(a => assertTrue(a.value == 99))
       },
       test("unification over iterables of same length") {
         val program = query3[Int, Int, Int] { case (a, b, c) =>
@@ -41,10 +47,8 @@ object ZKanrenSpec extends ZIOSpecDefault {
           val seq2 = Seq(lval(1), b, lval(3))
           seq1 =:= seq2
         }
-
-        program.runHead.map {
-          case Some((a: LVal[Int], b: LVal[Int], c: LVal[Int])) => assertTrue((a(), b(), c()) == (1, 2, 3))
-          case x                                                => assertNever(s"Should have resolved sequence ${x}")
+        testRunSingle[(LVal[Int], LVal[Int], LVal[Int])](program) { case (a, b, c) =>
+          assertTrue((a.value, b.value, c.value) == (1, 2, 3))
         }
       },
       test("unification over custom product") {
@@ -64,9 +68,8 @@ object ZKanrenSpec extends ZIOSpecDefault {
           a =:= b
         }
 
-        program.runHead.map {
-          case Some((a: LVal[String], b: LVal[Int])) => assertTrue((a(), b()) == ("Melo", 22))
-          case x                                     => assertNever(s"Should have resolved product ${x}")
+        testRunSingle[(LVal[String], LVal[Int])](program) { case (a, b) =>
+          assertTrue((a.value, b.value) == ("Melo", 22))
         }
       }
     )
