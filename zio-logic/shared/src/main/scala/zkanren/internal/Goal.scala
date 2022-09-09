@@ -85,7 +85,6 @@ object Goal {
     def channel(): Chan[Any, Nothing] =
       ZChannel.readWithCause(
         in = { state =>
-          println(s"GOT UNIFIY ST ${state}")
           ZChannel.write(state).mapOutZIO(unifyEffect) *> channel()
         },
         halt = _ => ZChannel.unit,
