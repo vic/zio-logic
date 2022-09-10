@@ -17,8 +17,6 @@ private[internal] object State {
 
   def empty: ULayer[State] = ZLayer.fromZIO(emptyState().commit)
 
-  // Reifies a variable to its current value which can be the variable itself
-  // if not already bound on state.
   def reifyNow[A](v: LVar[A]): URSTM[State, LTerm[A]] =
     ZSTM.serviceWithSTM[State](_.reify[A](v))
 

@@ -1,8 +1,8 @@
 package zkanren.internal
 
 import zio.stm.{URSTM, ZSTM}
-import zio.stream.{ZChannel, ZStream}
-import zio.{Cause, Chunk, UIO, ZIO, ZLayer}
+import zio.stream.{ZChannel, ZPipeline, ZStream}
+import zio.{Cause, Chunk, UIO, ZIO, ZLayer, ZNothing}
 
 final class Goal[-R, +E] private[Goal] (private val channel: Goal.Chan[R, E]) extends AnyVal { self =>
   @inline def and[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
@@ -49,8 +49,20 @@ object Goal {
   def fromFunction[R, E](f: State => Either[State, State]): Goal[R, E] =
     fromReadLoop[R, E](ZChannel.write(_).mapOut(f))
 
+  def fromPipeline[R, E](p: ZPipeline[R, E, State, Either[State, State]]): Goal[R, E] = {
+    val ch = ZChannel
+      .write(_: State)
+      .mapOut(Chunk.succeed(_))
+      .concatMap(ZChannel.write(_) >>> p.toChannel)
+      .concatMap(ZChannel.writeChunk(_))
+    fromReadLoop(ch)
+  }
+
   def fromZIO[R, E](f: ZIO[R with State, E, Either[State, State]]): Goal[R, E] =
     fromReadLoop[R, E](ZChannel.write(_).mapOutZIO(s => f.provideSomeLayer[R](ZLayer.succeed(s))))
+
+  def fromZIOPredicate[R, E](predicate: ZIO[R with State, E, Boolean]): Goal[R, E] =
+    fromZIO[R, E](ZIO.serviceWithZIO[State](s => predicate.map(Either.cond(_, s, s))))
 
   def fromReadLoop[R, E](read: State => Chan[R, E]): Goal[R, E] = {
     lazy val channel: Chan[R, E] =
@@ -97,15 +109,13 @@ object Goal {
     Goal.fromChannel(ch)
   }
 
-  def race[R, E](goals: IterableOnce[Goal[R, E]]): Goal[R, E] = {
-    def raceFirst(s: State): ZIO[R, E, Either[State, State]] =
-      ZStream
-        .fromChannel(ZChannel.write(s) >>> disj(goals).toChannel.mapOut(Chunk.succeed))
-        .collectRight
-        .runHead
-        .map(_.fold[Either[State, State]](Left(s))(Right(_)))
-    Goal.fromReadLoop(ZChannel.write(_).mapOutZIO(raceFirst))
-  }
+  // Creates a goal that is the same as the given goal but succeeds only once.
+  def once[R, E](g: Goal[R, E]): Goal[R, E] =
+    g.pipeSuccessTo(fromPipeline(ZPipeline.take[State](1) >>> ZPipeline.map(Right(_))))
+
+  // Logical disjunction of goals but only emits once. Useful for potentially expensive
+  // goals where we only need evidence of at least one success.
+  def race[R, E](goals: IterableOnce[Goal[R, E]]): Goal[R, E] = once(disj(goals))
 
   def unifyTerm[A](a: LTerm[A], b: LTerm[A]): Goal[Any, Nothing] =
     fromZIO[Any, Nothing](
