@@ -107,6 +107,13 @@ object Goal {
   }
 
   def unifyTerm[A](a: LTerm[A], b: LTerm[A]): Goal[Any, Nothing] =
-    fromZIO[Any, Nothing](ZIO.serviceWithZIO[State](_.bind(a, b).commit.either))
+    fromZIO[Any, Nothing](
+      ZIO.serviceWithZIO[State](s =>
+        s.bind(a, b)
+          .commit
+          .either
+          .map(_.fold(_ => Left(s), _ => Right(s)))
+      )
+    )
 
 }

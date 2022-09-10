@@ -7,7 +7,7 @@ import scala.annotation.tailrec
 
 sealed trait State {
   def fresh[A]: USTM[LVar[A]]
-  def bind[A](v: LTerm[A], t: LTerm[A]): STM[State, State]
+  def bind[A](v: LTerm[A], t: LTerm[A]): STM[(LTerm[A], LTerm[A]), (LTerm[A], LTerm[A])]
   def query(qs: Seq[LVar[_]]): USTM[Seq[LTerm[_]]]
   def branch: USTM[State]
 }
@@ -19,17 +19,17 @@ private[internal] object State {
     override def fresh[A]: USTM[LVar[A]] =
       nextVar.getAndUpdate(_ + 1).map(LVar(_))
 
-    override def bind[A](v: LTerm[A], t: LTerm[A]): STM[State, State] =
+    override def bind[A](v: LTerm[A], t: LTerm[A]): STM[(LTerm[A], LTerm[A]), (LTerm[A], LTerm[A])] =
       bindings
         .modify(b =>
           BindingOps.bind(v, t)(b) match {
             case Left(binds)  =>
-              branch.flatMap(ZSTM.fail(_)) -> binds
+              Left((v -> t)) -> binds
             case Right(binds) =>
-              ZSTM.succeed(this) -> binds
+              Right((v -> t)) -> binds
           }
         )
-        .flatMap(identity)
+        .absolve
 
     override def query(qs: Seq[LVar[_]]): USTM[Seq[LTerm[_]]] =
       bindings.get.map { bindings =>
