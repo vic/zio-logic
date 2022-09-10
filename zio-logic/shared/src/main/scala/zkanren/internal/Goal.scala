@@ -1,7 +1,7 @@
 package zkanren.internal
 
 import zio.stream.{ZChannel, ZStream}
-import zio.{Cause, Chunk, UIO}
+import zio.{Cause, Chunk, UIO, ZIO, ZLayer}
 
 final class Goal[-R, +E] private[Goal] (private val channel: Goal.Chan[R, E]) extends AnyVal { self =>
   @inline def and[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
@@ -45,24 +45,28 @@ object Goal {
 
   def fromChannel[R, E](ch: Chan[R, E]): Goal[R, E] = new Goal(ch)
 
-  def reject: Goal[Any, Nothing] = {
-    lazy val channel: Chan[Any, Nothing] =
-      ZChannel.readWithCause[Any, Any, State, Any, Nothing, Either[State, State], Any](
-        in = ZChannel.write(_).mapOut(Left(_)) *> channel,
+  def fromFunction[R, E](f: State => Either[State, State]): Goal[R, E] =
+    fromReadConcat[R, E](ZChannel.write(_).mapOut(f))
+
+  def fromZIO[R, E](f: ZIO[R with State, E, Either[State, State]]): Goal[R, E] =
+    fromReadConcat[R, E](ZChannel.write(_).mapOutZIO(s => f.provideSomeLayer[R](ZLayer.succeed(s))))
+
+  def fromReadConcat[R, E](read: State => Chan[R, E]): Goal[R, E] = {
+    lazy val channel: Chan[R, E] =
+      ZChannel.readWithCause(
+        in = ZChannel.write(_).concatMap(read) *> channel,
         halt = e => ZChannel.failCause(e.stripFailures),
         done = ZChannel.succeedNow(_)
       )
     Goal.fromChannel(channel)
   }
 
-  def accept: Goal[Any, Nothing] = {
-    lazy val channel: Chan[Any, Nothing] = ZChannel.readWithCause(
-      in = ZChannel.write(_).mapOut(Right(_)) *> channel,
-      halt = e => ZChannel.failCause(e.stripFailures),
-      done = ZChannel.succeedNow(_)
-    )
-    Goal.fromChannel(channel)
-  }
+  def reject: Goal[Any, Nothing] = fromFunction(Left(_))
+
+  def accept: Goal[Any, Nothing] = fromFunction(Right(_))
+
+  def neg[R, E](g: Goal[R, E]): Goal[R, E] =
+    conj(Seq(g, reject))
 
   def conj[R, E](goals: IterableOnce[Goal[R, E]]): Goal[R, E] =
     goals.iterator.reduceLeft[Goal[R, E]](_ pipeSuccessTo _)
@@ -73,18 +77,7 @@ object Goal {
     Goal.fromChannel(ch)
   }
 
-  def unifyTerm[A](a: LTerm[A], b: LTerm[A]): Goal[Any, Nothing] = {
-    def unifyEffect(state: State): UIO[Either[State, State]] =
-      state.bind(a, b).commit.either
-
-    lazy val channel: Chan[Any, Nothing] =
-      ZChannel.readWithCause(
-        in = { state => ZChannel.write(state).mapOutZIO(unifyEffect) *> channel },
-        halt = e => ZChannel.failCause(e.stripFailures),
-        done = ZChannel.succeedNow(_)
-      )
-
-    Goal.fromChannel(channel)
-  }
+  def unifyTerm[A](a: LTerm[A], b: LTerm[A]): Goal[Any, Nothing] =
+    fromZIO[Any, Nothing](ZIO.serviceWithZIO[State](_.bind(a, b).commit.either))
 
 }
