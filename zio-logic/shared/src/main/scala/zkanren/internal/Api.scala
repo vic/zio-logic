@@ -1,6 +1,7 @@
 package zkanren.internal
 
-import zio.ULayer
+import zio.stm.ZSTM
+import zio.{ULayer, ZIO}
 import zkanren.internal
 
 private[zkanren] trait Api extends Api.Exports with Api.FreshQuery with Api.MicroKanren
@@ -79,14 +80,25 @@ private[zkanren] object Api {
   }
 
   trait MicroKanren {
-    def conj[R, E](g: Goal[R, E], gs: Goal[R, E]*): Goal[R, E] =
+    def all[R, E](g: Goal[R, E], gs: Goal[R, E]*): Goal[R, E] =
       Goal.conj[R, E](g +: gs)
 
-    def disj[R, E](g: Goal[R, E], gs: Goal[R, E]*): Goal[R, E] =
+    def any[R, E](g: Goal[R, E], gs: Goal[R, E]*): Goal[R, E] =
       Goal.disj[R, E](g +: gs)
 
     def conde[R, E](cases: IterableOnce[Goal[R, E]]*): Goal[R, E] =
       Goal.disj[R, E](cases.iterator.map(Goal.conj[R, E]))
+
+    def eventuallySatisfyZIO[R, E, A](v: LVar[A])(f: A => ZIO[R, E, Boolean]): Goal[Any, Nothing] =
+      Goal.fromZIOPredicate(
+        State
+          .reifyEventually(v)
+          .commit
+          .flatMap[R with State, E, Boolean](x => f(x.value))
+      )
+
+    def eventuallySatisfy[A](v: LVar[A])(predicate: A => Boolean): Goal[Any, Nothing] =
+      Goal.fromZIOPredicate(State.reifyEventually(v).commit.map(x => predicate(x.value)))
 
   }
 }
