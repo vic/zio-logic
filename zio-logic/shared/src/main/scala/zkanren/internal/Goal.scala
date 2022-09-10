@@ -1,5 +1,6 @@
 package zkanren.internal
 
+import zio.stm.{URSTM, ZSTM}
 import zio.stream.{ZChannel, ZStream}
 import zio.{Cause, Chunk, UIO, ZIO, ZLayer}
 
@@ -109,7 +110,7 @@ object Goal {
   def unifyTerm[A](a: LTerm[A], b: LTerm[A]): Goal[Any, Nothing] =
     fromZIO[Any, Nothing](
       ZIO.serviceWithZIO[State](s =>
-        s.bind(a, b)
+        s.unify(a, b)
           .commit
           .either
           .map(_.fold(_ => Left(s), _ => Right(s)))

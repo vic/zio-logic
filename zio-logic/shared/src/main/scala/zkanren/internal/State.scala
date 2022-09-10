@@ -1,25 +1,39 @@
 package zkanren.internal
 
-import zio.stm.{STM, TRef, USTM, ZSTM}
+import zio.stm.{STM, TRef, URSTM, USTM, ZSTM}
 import zio.{ULayer, ZLayer}
 
 import scala.annotation.tailrec
 
 sealed trait State {
   def fresh[A]: USTM[LVar[A]]
-  def bind[A](v: LTerm[A], t: LTerm[A]): STM[(LTerm[A], LTerm[A]), (LTerm[A], LTerm[A])]
-  def query(qs: Seq[LVar[_]]): USTM[Seq[LTerm[_]]]
+  def unify[A](v: LTerm[A], t: LTerm[A]): STM[(LTerm[A], LTerm[A]), (LTerm[A], LTerm[A])]
+  def reify[A](v: LVar[A]): USTM[LTerm[A]]
   def branch: USTM[State]
 }
 
 private[internal] object State {
   import BindingOps.Bindings
 
+  def empty: ULayer[State] = ZLayer.fromZIO(emptyState().commit)
+
+  // Reifies a variable to its current value which can be the variable itself
+  // if not already bound on state.
+  def reifyNow[A](v: LVar[A]): URSTM[State, LTerm[A]] =
+    ZSTM.serviceWithSTM[State](_.reify[A](v))
+
+  // Reifies a variable until it can be resolved into a value.
+  def reifyEventually[A](v: LVar[A]): URSTM[State, LVal[A]] =
+    reifyNow[A](v).flatMap {
+      case lVal: LVal[A] => ZSTM.succeed(lVal)
+      case lVar: LVar[A] => ZSTM.fail(lVar)
+    }.eventually
+
   private def make(nextVar: TRef[Long], bindings: TRef[Bindings]): State = new State {
     override def fresh[A]: USTM[LVar[A]] =
       nextVar.getAndUpdate(_ + 1).map(LVar(_))
 
-    override def bind[A](v: LTerm[A], t: LTerm[A]): STM[(LTerm[A], LTerm[A]), (LTerm[A], LTerm[A])] =
+    override def unify[A](v: LTerm[A], t: LTerm[A]): STM[(LTerm[A], LTerm[A]), (LTerm[A], LTerm[A])] =
       bindings
         .modify(b =>
           BindingOps.bind(v, t)(b) match {
@@ -31,12 +45,10 @@ private[internal] object State {
         )
         .absolve
 
-    override def query(qs: Seq[LVar[_]]): USTM[Seq[LTerm[_]]] =
+    override def reify[A](v: LVar[A]): USTM[LTerm[A]] =
       bindings.get.map { bindings =>
-        qs.foldLeft[Seq[LTerm[_]]](Nil) { case (acc, q) =>
-          val (r, _) = BindingOps.walk(q, Nil)(bindings)
-          acc :+ r
-        }
+        val (r, _) = BindingOps.walk(v, Nil)(bindings)
+        r
       }
 
     override def branch: USTM[State] = for {
@@ -46,8 +58,6 @@ private[internal] object State {
       bindings  <- TRef.make[Bindings](currBinds)
     } yield make(nextVar, bindings)
   }
-
-  def empty: ULayer[State] = ZLayer.fromZIO(emptyState().commit)
 
   private def emptyState(): USTM[State] =
     for {

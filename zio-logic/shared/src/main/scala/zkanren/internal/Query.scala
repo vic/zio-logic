@@ -1,6 +1,6 @@
 package zkanren.internal
 
-import zio.stm.URSTM
+import zio.stm.{URSTM, USTM, ZSTM}
 import zio.stream.ZStream
 
 private[internal] object Query {
@@ -113,9 +113,15 @@ private[internal] object Query {
     def toStream[R, E, O](f: V => Seq[LVar[_]], g: PartialFunction[Seq[LTerm[_]], O])(
       makeGoal: V => Goal[R, E]
     ): ZStream[R with State, E, O] = {
+
+      def reifySeq(s: State)(qs: Seq[LVar[_]]): USTM[Seq[LTerm[_]]] =
+        qs.foldLeft[USTM[Seq[LTerm[_]]]](ZSTM.succeed(Nil)) { case (acc, q) =>
+          acc.zipWith(s.reify(q))(_ :+ _)
+        }
+
       val m = for {
         vars  <- makeVars
-        stream = makeGoal(vars).toStream.collectRight.mapZIO(_.query(f(vars)).map(g).commit)
+        stream = makeGoal(vars).toStream.collectRight.mapZIO(reifySeq(_)(f(vars)).map(g).commit)
       } yield stream
       ZStream.unwrap(m.commit)
     }
