@@ -54,7 +54,7 @@ object Goal {
   def fromReadLoop[R, E](read: State => Chan[R, E]): Goal[R, E] = {
     lazy val channel: Chan[R, E] =
       ZChannel.readWithCause(
-        in = ZChannel.write(_).concatMap(read) *> channel,
+        in = read(_) *> channel,
         halt = e => ZChannel.failCause(e.stripFailures),
         done = ZChannel.succeedNow(_)
       )
