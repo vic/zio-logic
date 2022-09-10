@@ -96,6 +96,18 @@ object Goal {
     Goal.fromChannel(ch)
   }
 
+  def race[R, E](goals: IterableOnce[Goal[R, E]]): Goal[R, E] = {
+    def raceFirst(s: State): Chan[R, E] = {
+      val streams      = goals.iterator.map { g =>
+        ZStream.fromChannel(ZChannel.write(s) >>> g.toChannel.mapOut(Chunk.succeed))
+      }.toSeq
+      val firstSuccess = ZStream.mergeAll(n = 16)(streams: _*).collectRight.runHead
+      val effect       = firstSuccess.map(_.fold[Either[State, State]](Left(s))(Right(_)))
+      ZChannel.write(s).mapOutZIO(_ => effect)
+    }
+    fromReadLoop(raceFirst)
+  }
+
   def unifyTerm[A](a: LTerm[A], b: LTerm[A]): Goal[Any, Nothing] =
     fromZIO[Any, Nothing](ZIO.serviceWithZIO[State](_.bind(a, b).commit.either))
 
