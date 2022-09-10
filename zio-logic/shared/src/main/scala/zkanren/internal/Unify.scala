@@ -20,7 +20,7 @@ private[internal] object Unify {
 
     val goals: Iterator[Goal[R, E]] = ab.map {
       case (Some(a), Some(b)) => u(a, b)
-      case _                  => Goal.fail
+      case _                  => Goal.reject
     }
 
     Goal.conj(goals)

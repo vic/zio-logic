@@ -20,13 +20,9 @@ private[internal] object Fresh {
         v.map(x).commit.provideSomeLayer(ZLayer.succeed(state))
 
       lazy val channel: Goal.Chan[R, E] = ZChannel.readWithCause(
-        in = { s =>
-          ZChannel.unwrap(makeGoal(s).map { goal =>
-            ZChannel.write(s) >>> goal.toChannel
-          })
-        },
-        halt = { e => ZChannel.unit },
-        done = { x => ZChannel.unit }
+        in = s => ZChannel.unwrap(makeGoal(s).map(goal => ZChannel.write(s) >>> goal.toChannel)),
+        halt = e => ZChannel.failCause(e.stripFailures),
+        done = ZChannel.succeedNow(_)
       )
 
       Goal.fromChannel(channel)

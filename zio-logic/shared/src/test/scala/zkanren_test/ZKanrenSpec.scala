@@ -18,7 +18,7 @@ object ZKanrenSpec extends ZIOSpecDefault {
     program: ZStream[State, Nothing, Any]
   )(test: T => TestResult): ZIO[State, Nothing, TestResult] =
     program.runHead.map {
-      case Some(t: T) if classTag[T].runtimeClass.isInstance(t) =>
+      case Some(t: T) =>
         test(t)
 
       case x =>

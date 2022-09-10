@@ -1,7 +1,7 @@
 package zkanren.internal
 
 import zio.stream.{ZChannel, ZStream}
-import zio.{Chunk, UIO}
+import zio.{Cause, Chunk, UIO}
 
 final class Goal[-R, +E] private[Goal] (private val channel: Goal.Chan[R, E]) extends AnyVal { self =>
   @inline def and[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
@@ -45,20 +45,21 @@ object Goal {
 
   def fromChannel[R, E](ch: Chan[R, E]): Goal[R, E] = new Goal(ch)
 
-  def fail[R, E]: Goal[R, E] = {
-    lazy val channel: Chan[R, E] = ZChannel.readWithCause[R, Any, State, Any, E, Either[State, State], Any](
-      in = ZChannel.write(_).mapOut(Left(_)) *> channel,
-      halt = _ => ZChannel.unit,
-      done = ZChannel.succeedNow(_)
-    )
+  def reject: Goal[Any, Nothing] = {
+    lazy val channel: Chan[Any, Nothing] =
+      ZChannel.readWithCause[Any, Any, State, Any, Nothing, Either[State, State], Any](
+        in = ZChannel.write(_).mapOut(Left(_)) *> channel,
+        halt = e => ZChannel.failCause(e.stripFailures),
+        done = ZChannel.succeedNow(_)
+      )
     Goal.fromChannel(channel)
   }
 
-  def succeed: Goal[Any, Nothing] = {
+  def accept: Goal[Any, Nothing] = {
     lazy val channel: Chan[Any, Nothing] = ZChannel.readWithCause(
       in = ZChannel.write(_).mapOut(Right(_)) *> channel,
-      halt = cause => ZChannel.unit,
-      done = pill => ZChannel.unit
+      halt = e => ZChannel.failCause(e.stripFailures),
+      done = ZChannel.succeedNow(_)
     )
     Goal.fromChannel(channel)
   }
@@ -79,8 +80,8 @@ object Goal {
     lazy val channel: Chan[Any, Nothing] =
       ZChannel.readWithCause(
         in = { state => ZChannel.write(state).mapOutZIO(unifyEffect) *> channel },
-        halt = _ => ZChannel.unit,
-        done = _ => ZChannel.unit
+        halt = e => ZChannel.failCause(e.stripFailures),
+        done = ZChannel.succeedNow(_)
       )
 
     Goal.fromChannel(channel)
