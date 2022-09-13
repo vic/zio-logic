@@ -59,11 +59,6 @@ private[zkanren] object Api {
     Goal.conj(Seq(l._1 =:= r._1, l._2 =:= r._2, l._3 =:= r._3, l._4 =:= r._4, l._5 =:= r._5, l._6 =:= r._6))
   }
 
-  implicit def eventualUnifier[R, E, A, B](implicit u: Unify[R, E, A, B]): Unify[R, E, LTerm[A], LTerm[B]] = {
-    case (a, b) =>
-      zkanren.eventually.unify(a, b)
-  }
-
   implicit class UnifyOps[+A](private val a: A) extends AnyVal {
     @inline def =:=[R, E, B](b: B)(implicit unify: Unify[R, E, A, B]): Goal[R, E] = unify(a, b)
 
@@ -226,6 +221,7 @@ private[zkanren] object Api {
         )
       }
     }
+
   }
 
   trait Micro {
@@ -241,13 +237,28 @@ private[zkanren] object Api {
       Goal.disj[R, E](cases.iterator.map(Goal.conj[R, E]))
   }
 
-  implicit class LOptionOps[A](private val self: LTerm[Option[A]]) extends AnyVal {
-    import zkanren._
-    def isEmpty: Goal[Any, Nothing] = self =:= lval(None)
+//  implicit class LOptionOps[A](private val self: LTerm[Option[A]]) extends AnyVal {
+//    import zkanren._
+//    def isEmpty: Goal[Any, Nothing] = self =:= lval(None)
+//
+//    def contains[R, E, B](item: LTerm[B])(implicit u: Unify[R, E, A, B]): Goal[Any, Nothing] =
+//      ???
+//  }
 
-    def contains[R, E, B](item: LTerm[B])(implicit u: Unify[R, E, A, B]): Goal[Any, Nothing] =
-      ???
-  }
+//  implicit class LSeqOps[A](private val self: LTerm[Seq[A]]) extends AnyVal {
+//    import zkanren._
+//    def isEmpty: Goal[Any, Nothing] = self =:= lval(Nil)
+//
+//    def reifyEventually: ZSTM[State, Nothing, Seq[LVal[A]]] =
+//      State.reifyEventually(self).map(_.map(lval))
+//
+//    def hasHead[R, E, B](head: LTerm[B])(implicit u: Unify[R, E, LTerm[A], LTerm[B]]): Goal[R, E] = {
+//      val x: Seq[LTerm[A]] = ??? // unwrap self
+//      // TODO: Obtain only first without having to materialize whole list.
+//      x.headOption.map(h => h =:= head).getOrElse(Goal.reject)
+//    }
+//
+//  }
 
   trait Relations {
     import zkanren._

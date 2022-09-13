@@ -131,6 +131,17 @@ object Goal {
     Goal.fromChannel(ch)
   }
 
+  // Creates a channel identical to the given one but that will only emit once and then stop reading
+  // from upstream events, terminating the whole stream.
+  def halt[R, E](g: Goal[R, E]): Goal[R, E] = {
+    val ch = ZChannel.readWithCause[R, E, Either[State, State], Any, E, Either[State, State], Any](
+      in = ZChannel.write(_),
+      halt = ZChannel.failCause(_),
+      done = ZChannel.succeed(_)
+    )
+    fromChannel(g.toChannel >>> ch)
+  }
+
   // Creates a goal identical to the given one but that will only ever consume one input.
   // Note that reading once from upstream will cause the stream to terminate.
   def readOnce[R, E](g: Goal[R, E]): Goal[R, E] = {
@@ -143,14 +154,16 @@ object Goal {
   }
 
   private def emitOnlyOnce[R, E](
-    write: PartialFunction[Either[State, State], ZChannel[Any, Any, Any, Any, Nothing, Either[State, State], Unit]]
+    onRight: Option[Boolean] // None means on either right or left.
   )(g: Goal[R, E]): Goal[R, E] = {
     def ch(done: Boolean): ZChannel[R, E, Either[State, State], Any, E, Either[State, State], Any] =
       ZChannel.readWithCause(
         in = {
-          case _ if done                 => ch(done)
-          case x if write.isDefinedAt(x) => write(x) *> ch(true)
-          case _                         => ch(done)
+          case _ if done                          => ch(done)
+          case x if onRight.isEmpty               => ZChannel.write(x) *> ch(true)
+          case Right(x) if onRight.contains(true) => ZChannel.write(Right(x)) *> ch(done = true)
+          case Left(x) if onRight.contains(false) => ZChannel.write(Left(x)) *> ch(done = true)
+          case _                                  => ch(done)
         },
         halt = ZChannel.failCause(_),
         done = ZChannel.succeed(_)
@@ -158,17 +171,14 @@ object Goal {
     fromChannel(g.toChannel >>> ch(false))
   }
 
-  // Creates a goal that is the same as the given goal but only emits once.
-  def once[R, E](g: Goal[R, E]): Goal[R, E] =
-    emitOnlyOnce(ZChannel.write(_))(g)
+  // Creates a goal that is the same as the given goal but only emits once. But waits for upstream to finish.
+  def once[R, E](g: Goal[R, E]): Goal[R, E] = emitOnlyOnce(None)(g)
 
-  // Creates a goal that is the same as the given goal but succeeds only once.
-  def succeedOnce[R, E](g: Goal[R, E]): Goal[R, E]            =
-    emitOnlyOnce({ case Right(s) => ZChannel.write(Right(s)) })(g)
+  // Creates a goal that is the same as the given goal but succeeds only once. But waits for upstream to finish.
+  def succeedOnce[R, E](g: Goal[R, E]): Goal[R, E] = emitOnlyOnce(Some(true))(g)
 
-  // Creates a goal that is the same as the given goal but fails only once.
-  def failOnce[R, E](g: Goal[R, E]): Goal[R, E]               =
-    emitOnlyOnce({ case Left(s) => ZChannel.write(Left(s)) })(g)
+  // Creates a goal that is the same as the given goal but fails only once. But waits for upstream to finish.
+  def failOnce[R, E](g: Goal[R, E]): Goal[R, E] = emitOnlyOnce(Some(false))(g)
 
   // Logical disjunction of goals but only emits once. Useful for potentially expensive
   // goals where we only need evidence of at least one success.
