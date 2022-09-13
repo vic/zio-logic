@@ -78,13 +78,20 @@ object ZKanrenSpec extends ZIOSpecDefault {
       }
     }
 
+  private val testDefineATermFunction = test("termo creates a term unifying function") {
+    val x       = termo1[Any, Nothing, Int](_ =:= lval(5))
+    val program = query1[Int](x)
+    testRunSingle[LVal[Int]](program)(n => assertTrue(n.value == 5))
+  }
+
   override def spec = suite("ZKanren")(
     suite("Unification")(
       testEmptyUnification,
       testUnificationOfVariableToItself,
       testUnificationOfVariableToValue,
       testUnificationOfIterablesOfSameLength,
-      testUnificationOverCustomProduct
+      testUnificationOverCustomProduct,
+      testDefineATermFunction
     )
   ).provideCustomLayer(emptyStateLayer) @@ timed
 

@@ -10,6 +10,55 @@ private[zkanren] trait Api extends Api.Exports with Api.FreshQuery with Api.Micr
 private[zkanren] object Api {
   implicit def swapUnify[R, E, A, B](implicit u: Unify[R, E, A, B]): Unify[R, E, B, A] = { case (b, a) => u(a, b) }
 
+  implicit def tuple1Unify[R, E, A0, A1](implicit u1: Unify[R, E, A0, A1]): Unify[R, E, Tuple1[A0], Tuple1[A1]] = {
+    case (l, r) => l._1 =:= r._1
+  }
+
+  implicit def tuple2Unify[R, X, A0, A1, B0, B1](implicit
+    u1: Unify[R, X, A0, A1],
+    u2: Unify[R, X, B0, B1]
+  ): Unify[R, X, (A0, B0), (A1, B1)] = { case (l, r) =>
+    Goal.conj(Seq(l._1 =:= r._1, l._2 =:= r._2))
+  }
+
+  implicit def tuple3Unify[R, X, A0, A1, B0, B1, C0, C1](implicit
+    u1: Unify[R, X, A0, A1],
+    u2: Unify[R, X, B0, B1],
+    u3: Unify[R, X, C0, C1]
+  ): Unify[R, X, (A0, B0, C0), (A1, B1, C1)] = { case (l, r) =>
+    Goal.conj(Seq(l._1 =:= r._1, l._2 =:= r._2, l._3 =:= r._3))
+  }
+
+  implicit def tuple4Unify[R, X, A0, A1, B0, B1, C0, C1, D0, D1](implicit
+    u1: Unify[R, X, A0, A1],
+    u2: Unify[R, X, B0, B1],
+    u3: Unify[R, X, C0, C1],
+    u4: Unify[R, X, D0, D1]
+  ): Unify[R, X, (A0, B0, C0, D0), (A1, B1, C1, D1)] = { case (l, r) =>
+    Goal.conj(Seq(l._1 =:= r._1, l._2 =:= r._2, l._3 =:= r._3, l._4 =:= r._4))
+  }
+
+  implicit def tuple5Unify[R, X, A0, A1, B0, B1, C0, C1, D0, D1, E0, E1](implicit
+    u1: Unify[R, X, A0, A1],
+    u2: Unify[R, X, B0, B1],
+    u3: Unify[R, X, C0, C1],
+    u4: Unify[R, X, D0, D1],
+    u5: Unify[R, X, E0, E1]
+  ): Unify[R, X, (A0, B0, C0, D0, E0), (A1, B1, C1, D1, E1)] = { case (l, r) =>
+    Goal.conj(Seq(l._1 =:= r._1, l._2 =:= r._2, l._3 =:= r._3, l._4 =:= r._4, l._5 =:= r._5))
+  }
+
+  implicit def tuple6Unify[R, X, A0, A1, B0, B1, C0, C1, D0, D1, E0, E1, F0, F1](implicit
+    u1: Unify[R, X, A0, A1],
+    u2: Unify[R, X, B0, B1],
+    u3: Unify[R, X, C0, C1],
+    u4: Unify[R, X, D0, D1],
+    u5: Unify[R, X, E0, E1],
+    u6: Unify[R, X, F0, F1]
+  ): Unify[R, X, (A0, B0, C0, D0, E0, F0), (A1, B1, C1, D1, E1, F1)] = { case (l, r) =>
+    Goal.conj(Seq(l._1 =:= r._1, l._2 =:= r._2, l._3 =:= r._3, l._4 =:= r._4, l._5 =:= r._5, l._6 =:= r._6))
+  }
+
   implicit def eventualUnifier[R, E, A, B](implicit u: Unify[R, E, A, B]): Unify[R, E, LTerm[A], LTerm[B]] = {
     case (a, b) =>
       zkanren.eventually.unify(a, b)
@@ -76,6 +125,7 @@ private[zkanren] object Api {
     @inline def lval[A] = LVal[A] _
 
     @inline def lvar[A]                          = Fresh.lvar[A]
+    @inline def lvar1[A]                         = Fresh.lvar[A]
     @inline def lvar2[A, B]                      = lvar[A] zip lvar[B]
     @inline def lvar3[A, B, C]                   = lvar2[A, B] zip lvar[C]
     @inline def lvar4[A, B, C, D]                = lvar3[A, B, C] zip lvar[D]
@@ -107,24 +157,31 @@ private[zkanren] object Api {
     @inline def query8[A, B, C, D, E, F, G, H]    = query(lvar8[A, B, C, D, E, F, G, H])
     @inline def query9[A, B, C, D, E, F, G, H, I] = query(lvar9[A, B, C, D, E, F, G, H, I])
 
-    def term1[R, E, A](f: LVar[A] => Goal[R, E])(a: LTerm[A]): Goal[R, E]                            =
-      fresh1[A](vA => vA =:= a && f(vA))
-    def term2[R, E, A, B](f: (LVar[A], LVar[B]) => Goal[R, E])(a: LTerm[A], b: LTerm[B]): Goal[R, E] =
-      fresh2[A, B] { case (vA, vB) => vA =:= a && vB =:= b && f(vA, vB) }
-    def term3[R, E, A, B, C](
-      f: (LVar[A], LVar[B], LVar[C]) => Goal[R, E]
-    )(a: LTerm[A], b: LTerm[B], c: LTerm[C]): Goal[R, E]                                             =
-      fresh3[A, B, C] { case (vA, vB, vC) => vA =:= a && vB =:= b && vC =:= c && f(vA, vB, vC) }
-    def term4[R, E, A, B, C, D](
-      f: (LVar[A], LVar[B], LVar[C], LVar[D]) => Goal[R, E]
-    )(a: LTerm[A], b: LTerm[B], c: LTerm[C], d: LTerm[D]): Goal[R, E]                                =
-      fresh4[A, B, C, D] { case (vA, vB, vC, vD) => vA =:= a && vB =:= b && vC =:= c && vD =:= d && f(vA, vB, vC, vD) }
-    def term5[R, X, A, B, C, D, E](
-      f: (LVar[A], LVar[B], LVar[C], LVar[D], LVar[E]) => Goal[R, X]
-    )(a: LTerm[A], b: LTerm[B], c: LTerm[C], d: LTerm[D], e: LTerm[E]): Goal[R, X]                   =
-      fresh5[A, B, C, D, E] { case (vA, vB, vC, vD, vE) =>
-        vA =:= a && vB =:= b && vC =:= c && vD =:= d && vE =:= e && f(vA, vB, vC, vD, vE)
-      }
+    def termo1[R, X, A](f: LVar[A] => Goal[R, X]): LTerm[A] => Goal[R, X] = (t: LTerm[A]) =>
+      fresh1[A](v => v =:= t && f(v))
+
+    def termo2[R, X, A, B](f: ((LVar[A], LVar[B])) => Goal[R, X]): (LTerm[A], LTerm[B]) => Goal[R, X] =
+      (a, b) => fresh2[A, B](v => v =:= (a, b) && f(v))
+
+    def termo3[R, X, A, B, C](
+      f: ((LVar[A], LVar[B], LVar[C])) => Goal[R, X]
+    ): (LTerm[A], LTerm[B], LTerm[C]) => Goal[R, X] =
+      (a, b, c) => fresh3[A, B, C](v => v =:= (a, b, c) && f(v))
+
+    def termo4[R, X, A, B, C, D](
+      f: ((LVar[A], LVar[B], LVar[C], LVar[D])) => Goal[R, X]
+    ): (LTerm[A], LTerm[B], LTerm[C], LTerm[D]) => Goal[R, X] =
+      (a, b, c, d) => fresh4[A, B, C, D](v => v =:= (a, b, c, d) && f(v))
+
+    def termo5[R, X, A, B, C, D, E](
+      f: ((LVar[A], LVar[B], LVar[C], LVar[D], LVar[E])) => Goal[R, X]
+    ): (LTerm[A], LTerm[B], LTerm[C], LTerm[D], LTerm[E]) => Goal[R, X] =
+      (a, b, c, d, e) => fresh5[A, B, C, D, E](v => v =:= (a, b, c, d, e) && f(v))
+
+    def termo6[R, X, A, B, C, D, E, F](
+      m: ((LVar[A], LVar[B], LVar[C], LVar[D], LVar[E], LVar[F])) => Goal[R, X]
+    ): (LTerm[A], LTerm[B], LTerm[C], LTerm[D], LTerm[E], LTerm[F]) => Goal[R, X] =
+      (a, b, c, d, e, f) => fresh6[A, B, C, D, E, F](v => v =:= (a, b, c, d, e, f) && m(v))
 
   }
 
