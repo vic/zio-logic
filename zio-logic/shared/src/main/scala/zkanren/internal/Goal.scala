@@ -1,17 +1,16 @@
 package zkanren.internal
 
-import zio.stm.{URSTM, ZSTM}
 import zio.stream.{ZChannel, ZPipeline, ZStream}
-import zio.{Cause, Chunk, UIO, ZIO, ZLayer, ZNothing}
+import zio.{Chunk, Promise, Ref, ZIO, ZLayer}
 
 final class Goal[-R, +E] private[Goal] (private val channel: Goal.Chan[R, E]) extends AnyVal { self =>
   @inline def and[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
-    pipeSuccessTo(goal)
+    Goal.conj(Seq(this, goal))
 
   def or[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
-    Goal.fromChannel(channel.zipParRight(goal.channel))
+    Goal.disj(Seq(this, goal))
 
-  def orElse[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
+  @inline def orElse[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
     pipeFailureTo(goal)
 
   def pipeFailureTo[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] = {
@@ -26,7 +25,7 @@ final class Goal[-R, +E] private[Goal] (private val channel: Goal.Chan[R, E]) ex
     Goal.fromChannel(ch)
   }
 
-  def toChannel: Goal.Chan[R, E] = channel
+  @inline def toChannel: Goal.Chan[R, E] = channel
 
   def toStream: ZStream[R with State, E, Either[State, State]] = {
     lazy val chan = ZChannel.serviceWithChannel[State] { state =>
@@ -34,13 +33,13 @@ final class Goal[-R, +E] private[Goal] (private val channel: Goal.Chan[R, E]) ex
     }
     ZStream.fromChannel(chan)
   }
-
 }
 
 object Goal {
 
   /**
    * A goal channel transforms input states into either unified or not-unifiable states.
+   * It can be seen as a function: `State => ZIO[R, E, Either[State, State]]`
    */
   type Chan[-R, +E] = ZChannel[R, Any, State, Any, E, Either[State, State], Any]
 
@@ -48,6 +47,15 @@ object Goal {
 
   def fromFunction[R, E](f: State => Either[State, State]): Goal[R, E] =
     fromReadLoop[R, E](ZChannel.write(_).mapOut(f))
+
+  def fromStream[R, E](s: ZStream[R with State, E, Either[State, State]]): Goal[R, E] = {
+    val read = ZChannel.write(_: State).concatMap { state =>
+      ZChannel.unit >>> s.toChannel
+        .provideSomeLayer[R](ZLayer.succeed(state))
+        .concatMap(ZChannel.writeChunk)
+    }
+    fromReadLoop(read)
+  }
 
   def fromPipeline[R, E](p: ZPipeline[R, E, State, Either[State, State]]): Goal[R, E] = {
     val ch = ZChannel
@@ -96,35 +104,74 @@ object Goal {
     }
 
   // Negates a goal. Succeeds if goal fails in a temporary state branch.
-  def neg[R, E](g: Goal[R, E]): Goal[R, E] = peek(swap(g))
+  def neg[R, E](g: Goal[R, E]): Goal[R, E] = peek(swap(succeedOnce(g)))
 
-  // Logical conjunction of goals. Goals are run as long as their previous one succeeds.
+  // Logical conjunction of goals. Goals are run sequentially as long as their
+  // previous one succeeds.
   def conj[R, E](goals: IterableOnce[Goal[R, E]]): Goal[R, E] =
     goals.iterator.reduceLeft[Goal[R, E]](_ pipeSuccessTo _)
 
-  // Logical disjunction of goals. Goals are run in parallel as they are independent form one another.
+  // TODO: parallel conjunction, goals executed in parallel but only emit
+  // if all of them have succeeded.
+//  def conjPar[R, E](goals: IterableOnce[Goal[R, E]]): Goal[R, E] = {
+//    val goalList = goals.iterator.toList
+//    val latches = goalList.map(_ => Promise.make[])
+//
+//    lazy val chunk = Chunk.fromIterator(goals.iterator.map(g => g.channel))
+//    val ch         = ZChannel.mergeAll(ZChannel.writeChunk(chunk), n = 16)
+//    Goal.fromChannel(ch)
+//  }
+
+  // Logical disjunction of goals.
+  // Goals are run in parallel with independent states
+  // The resulting goal emits as soon as any given goal emits.
   def disj[R, E](goals: IterableOnce[Goal[R, E]]): Goal[R, E] = {
-    lazy val chunk = Chunk.fromIterator(goals.iterator.map(_.channel))
+    lazy val chunk = Chunk.fromIterator(goals.iterator.map(g => branch.pipeSuccessTo(g).channel))
     val ch         = ZChannel.mergeAll(ZChannel.writeChunk(chunk), n = 16)
     Goal.fromChannel(ch)
   }
 
-  // Creates a goal that is the same as the given goal but succeeds only once.
+  // Creates a goal identical to the given one but that will only ever consume one input.
+  // Note that reading once from upstream will cause the stream to terminate.
+  def readOnce[R, E](g: Goal[R, E]): Goal[R, E] = {
+    val ch = ZChannel.readWithCause[R, Any, State, Any, E, Either[State, State], Any](
+      in = ZChannel.write(_) >>> g.toChannel,
+      halt = c => ZChannel.failCause(c.stripFailures),
+      done = ZChannel.succeed(_)
+    )
+    fromChannel(ch)
+  }
+
+  private def emitOnlyOnce[R, E](
+    write: PartialFunction[Either[State, State], ZChannel[Any, Any, Any, Any, Nothing, Either[State, State], Unit]]
+  )(g: Goal[R, E]): Goal[R, E] = {
+    def ch(done: Boolean): ZChannel[R, E, Either[State, State], Any, E, Either[State, State], Any] =
+      ZChannel.readWithCause(
+        in = {
+          case _ if done                 => ch(done)
+          case x if write.isDefinedAt(x) => write(x) *> ch(true)
+          case _                         => ch(done)
+        },
+        halt = ZChannel.failCause(_),
+        done = ZChannel.succeed(_)
+      )
+    fromChannel(g.toChannel >>> ch(false))
+  }
+
+  // Creates a goal that is the same as the given goal but only emits once.
   def once[R, E](g: Goal[R, E]): Goal[R, E] =
-    g.pipeSuccessTo(fromPipeline(ZPipeline.take[State](1) >>> ZPipeline.map(Right(_))))
+    emitOnlyOnce(ZChannel.write(_))(g)
+
+  // Creates a goal that is the same as the given goal but succeeds only once.
+  def succeedOnce[R, E](g: Goal[R, E]): Goal[R, E]            =
+    emitOnlyOnce({ case Right(s) => ZChannel.write(Right(s)) })(g)
+
+  // Creates a goal that is the same as the given goal but fails only once.
+  def failOnce[R, E](g: Goal[R, E]): Goal[R, E]               =
+    emitOnlyOnce({ case Left(s) => ZChannel.write(Left(s)) })(g)
 
   // Logical disjunction of goals but only emits once. Useful for potentially expensive
   // goals where we only need evidence of at least one success.
-  def race[R, E](goals: IterableOnce[Goal[R, E]]): Goal[R, E] = once(disj(goals))
-
-  def unifyTerm[A](a: LTerm[A], b: LTerm[A]): Goal[Any, Nothing] =
-    fromZIO[Any, Nothing](
-      ZIO.serviceWithZIO[State](s =>
-        s.unify(a, b)
-          .commit
-          .either
-          .map(_.fold(_ => Left(s), _ => Right(s)))
-      )
-    )
+  def race[R, E](goals: IterableOnce[Goal[R, E]]): Goal[R, E] = succeedOnce(disj(goals))
 
 }

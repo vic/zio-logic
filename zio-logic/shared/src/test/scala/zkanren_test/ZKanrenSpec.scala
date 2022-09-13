@@ -7,8 +7,6 @@ import zio.test.TestAspect.timed
 import zio.test.{TestResult, ZIOSpecDefault, assert, assertTrue}
 import zkanren._
 
-import scala.reflect.classTag
-
 object ZKanrenSpec extends ZIOSpecDefault {
 
   def testRunEmpty(program: ZStream[State, Nothing, Any]): ZIO[State, Nothing, TestResult] =

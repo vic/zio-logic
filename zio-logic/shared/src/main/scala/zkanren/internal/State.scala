@@ -8,7 +8,7 @@ import scala.annotation.tailrec
 sealed trait State {
   def fresh[A]: USTM[LVar[A]]
   def unify[A](v: LTerm[A], t: LTerm[A]): STM[(LTerm[A], LTerm[A]), (LTerm[A], LTerm[A])]
-  def reify[A](v: LVar[A]): USTM[LTerm[A]]
+  def reify[A](v: LTerm[A]): USTM[LTerm[A]]
   def branch: USTM[State]
 }
 
@@ -17,14 +17,14 @@ private[internal] object State {
 
   def empty: ULayer[State] = ZLayer.fromZIO(emptyState().commit)
 
-  def reifyNow[A](v: LVar[A]): URSTM[State, LTerm[A]] =
+  def reifyNow[A](v: LTerm[A]): URSTM[State, LTerm[A]] =
     ZSTM.serviceWithSTM[State](_.reify[A](v))
 
   // Reifies a variable until it can be resolved into a value.
-  def reifyEventually[A](v: LVar[A]): URSTM[State, LVal[A]] =
+  def reifyEventually[A](v: LTerm[A]): URSTM[State, A] =
     reifyNow[A](v).flatMap {
-      case lVal: LVal[A] => ZSTM.succeed(lVal)
-      case lVar: LVar[A] => ZSTM.fail(lVar)
+      case lVal: LVal[A] => ZSTM.succeed(lVal.value)
+      case x             => ZSTM.fail(x)
     }.eventually
 
   private def make(nextVar: TRef[Long], bindings: TRef[Bindings]): State = new State {
@@ -43,7 +43,7 @@ private[internal] object State {
         )
         .absolve
 
-    override def reify[A](v: LVar[A]): USTM[LTerm[A]] =
+    override def reify[A](v: LTerm[A]): USTM[LTerm[A]] =
       bindings.get.map { bindings =>
         val (r, _) = BindingOps.walk(v, Nil)(bindings)
         r
