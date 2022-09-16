@@ -25,30 +25,30 @@ object ZKanrenSpec extends ZIOSpecDefault {
 
   private val testEmptyUnification =
     test("empty unification") {
-      val program = query1[Any, Nothing, Int](a => lval(99) =:= lval(22))
+      val program = query1[Any, Nothing, Int](a => 99 =:= 22)
       testRunEmpty(program)
     }
 
   private val testUnificationOfVariableToItself =
     test("unification of forall values in variable") {
-      val program = query1[Int](a => lval(99) =:= lval(99))
+      val program = query1[Any, Nothing, Int](a => 99 =:= 99)
       testRunSingle[LVar[Int]](program)(v => assertTrue(v.variable == 0L))
     }
 
   private val testUnificationOfVariableToValue =
     test("unification binds variables assigned to other variables until a val is found.") {
-      val program = query1[Int] { a =>
-        fresh3[Int, Int, Int] { case (x, y, z) => a =:= z && x =:= lval(99) && z =:= y && x =:= y }
+      val program = query1[Any, Nothing, Int] { a =>
+        fresh3[Int, Int, Int] { case (x, y, z) => a =:= z && x =:= 99 && z =:= y && x =:= y }
       }
       testRunSingle[LVal[Int]](program)(a => assertTrue(a.value == 99))
     }
 
   private val testUnificationOfIterablesOfSameLength =
     test("unification over iterables of same length") {
-      val program = query3[Int, Int, Int] { case (a, b, c) =>
+      val program = query3[Any, Nothing, Int, Int, Int] { case (a, b, c) =>
         val seq1 = Seq(a, lval(2), c)
         val seq2 = Seq(lval(1), b, lval(3))
-        lval(seq1) =:= lval(seq2)
+        seq1 =:= seq2
       }
       testRunSingle[(LVal[Int], LVal[Int], LVal[Int])](program) { case (a, b, c) =>
         assertTrue((a.value, b.value, c.value) == (1, 2, 3))
@@ -63,11 +63,11 @@ object ZKanrenSpec extends ZIOSpecDefault {
         age: T[Int]
       )
 
-      implicit val unifyPerson: Unify1[Any, Nothing, Person[LTerm]] = Unify.one[Person[LTerm]] { case (a, b) =>
+      val unifyPerson: Unify1[Any, Nothing, Person[LTerm]] = Unify.one[Person[LTerm]] { case (a, b) =>
         a.name =:= b.name && a.age =:= b.age
       }
 
-      val program = query2[String, Int] { case (name, age) =>
+      val program = query2[Any, Nothing, String, Int] { case (name, age) =>
         val a: Person[LTerm] = Person(name = name, age = lval(22))
         val b: Person[LTerm] = Person(name = lval("Melo"), age = age)
         a =:= b
