@@ -7,7 +7,7 @@ import scala.annotation.tailrec
 
 sealed trait State {
   def fresh[A]: USTM[LVar[A]]
-  def unify[A](v: LTerm[A], t: LTerm[A]): STM[(LTerm[A], LTerm[A]), (LTerm[A], LTerm[A])]
+  private[internal] def unify[A](v: LTerm[A], t: LTerm[A]): STM[Option[(LVal[A], LVal[A])], Unit]
   def reify[A](v: LTerm[A]): USTM[LTerm[A]]
   def branch: USTM[State]
 }
@@ -31,17 +31,12 @@ private[internal] object State {
     override def fresh[A]: USTM[LVar[A]] =
       nextVar.getAndUpdate(_ + 1).map(LVar(_))
 
-    override def unify[A](v: LTerm[A], t: LTerm[A]): STM[(LTerm[A], LTerm[A]), (LTerm[A], LTerm[A])] =
-      bindings
-        .modify(b =>
-          BindingOps.bind(v, t)(b) match {
-            case Left(binds)  =>
-              Left((v -> t)) -> binds
-            case Right(binds) =>
-              Right((v -> t)) -> binds
-          }
-        )
-        .absolve
+    override def unify[A](v: LTerm[A], t: LTerm[A]): STM[Option[(LVal[A], LVal[A])], Unit] =
+      bindings.modify(BindingOps.bind(v, t)).flatMap {
+        case Left(BindingOps.MutualReference)         => STM.fail(None)
+        case Right(None)                              => STM.unit
+        case Right(Some(BindingOps.UnequalVal(a, b))) => STM.fail(Some(a -> b))
+      }
 
     override def reify[A](v: LTerm[A]): USTM[LTerm[A]] =
       bindings.get.map { bindings =>
@@ -66,11 +61,14 @@ private[internal] object State {
   private[State] object BindingOps {
     type Bindings = Map[LVar[_], LTerm[_]]
 
-    private[State] def bind[A](x: LTerm[A], y: LTerm[A])(bindings: Bindings): Either[Bindings, Bindings] =
-      bindable(x, y)(bindings) match {
-        case Right((x, y)) => Right(bindings + (x -> y))
-        case Left(Some(_)) => Right(bindings)
-        case Left(None)    => Left(bindings)
+    private[State] def bind[A](x: LTerm[A], y: LTerm[A])(
+      bindings: Bindings
+    ): (Either[MutualReference.type, Option[UnequalVal[A]]], Bindings) =
+      bindable[A](x, y)(bindings) match {
+        case AlreadySame      => Right(None)                   -> bindings
+        case Assignable(v, t) => Right(None)                   -> (bindings + (v -> t))
+        case MutualReference  => Left(MutualReference)         -> bindings
+        case UnequalVal(a, b) => Right(Some(UnequalVal(a, b))) -> bindings
       }
 
     @tailrec
@@ -85,24 +83,26 @@ private[internal] object State {
         case _          => (t, seen)
       }
 
-    // Right means the terms are bindable.
-    // Left(Some) means the terms are equal (==) and no binding needs to be done.
-    // Left(None) means the terms are not equal and cannot be bound.
-    private type Bindable[A] = Either[Option[LTerm[A]], (LVar[A], LTerm[A])]
+    sealed trait Bindable[+A]
+    case object MutualReference                       extends Bindable[Nothing]
+    case object AlreadySame                           extends Bindable[Nothing]
+    case class Assignable[A](v: LVar[A], t: LTerm[A]) extends Bindable[A]
+    case class UnequalVal[A](a: LVal[A], b: LVal[A])  extends Bindable[A]
+
     private def bindable[A](a: LTerm[A], b: LTerm[A])(bindings: Bindings): Bindable[A] = {
       val (aVal, aSeen) = walk(a, Seq(a))(bindings)
       val (bVal, bSeen) = walk(b, Seq(b))(bindings)
 
       (aVal, bVal) match {
-        case (x: LVar[A], y: LVar[A]) if aSeen.contains(y) || bSeen.contains(x) => Left(None)
+        case (x: LVar[A], y: LVar[A]) if aSeen.contains(y) || bSeen.contains(x) => MutualReference
 
-        case (x: LVar[A], y: LVar[A]) if x.variable == y.variable => Left(Some(x))
-        case (x: LVal[A], y: LVal[A]) if x.value == y.value       => Left(Some(x))
+        case (x: LVar[A], y: LVar[A]) if x.variable == y.variable => AlreadySame
+        case (x: LVal[A], y: LVal[A]) if x.value == y.value       => AlreadySame
+        case (x: LVal[A], y: LVal[A])                             => UnequalVal(x, y)
 
-        case (x: LVar[A], y: LVar[A]) => Right(x -> y)
-        case (x: LVar[A], y: LVal[A]) => Right(x -> y)
-        case (x: LVal[A], y: LVar[A]) => Right(y -> x)
-        case _                        => Left(None)
+        case (x: LVar[A], y: LVar[A]) => Assignable(x, y)
+        case (x: LVar[A], y: LVal[A]) => Assignable(x, y)
+        case (x: LVal[A], y: LVar[A]) => Assignable(y, x)
       }
     }
 

@@ -1,7 +1,7 @@
 package zkanren.internal
 
 import zio.stream.{ZChannel, ZPipeline, ZStream}
-import zio.{Chunk, Promise, Ref, ZIO, ZLayer}
+import zio.{Chunk, ZIO, ZLayer}
 
 final class Goal[-R, +E] private[Goal] (private val channel: Goal.Chan[R, E]) extends AnyVal { self =>
   @inline def and[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
@@ -16,18 +16,18 @@ final class Goal[-R, +E] private[Goal] (private val channel: Goal.Chan[R, E]) ex
   def pipeFailureTo[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] = {
     val lefts = channel.collect { case Left(e) => e }
     val ch    = lefts >>> goal.channel
-    Goal.fromChannel(ch)
+    Goal.fromChannel[R1, E1](ch)
   }
 
   def pipeSuccessTo[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] = {
     val rights = channel.collect { case Right(e) => e }
     val ch     = rights >>> goal.channel
-    Goal.fromChannel(ch)
+    Goal.fromChannel[R1, E1](ch)
   }
 
   @inline def toChannel: Goal.Chan[R, E] = channel
 
-  def toStream: ZStream[R with State, E, Either[State, State]] = {
+  def toStream: ZStream[R with Unify.UMap with State, E, Either[State, State]] = {
     lazy val chan = ZChannel.serviceWithChannel[State] { state =>
       ZChannel.write(state) >>> channel.mapOut(Chunk.succeed)
     }
@@ -41,7 +41,7 @@ object Goal {
    * A goal channel transforms input states into either unified or not-unifiable states.
    * It can be seen as a function: `State => ZIO[R, E, Either[State, State]]`
    */
-  type Chan[-R, +E] = ZChannel[R, Any, State, Any, E, Either[State, State], Any]
+  type Chan[-R, +E] = ZChannel[R with Unify.UMap, Any, State, Any, E, Either[State, State], Any]
 
   def fromChannel[R, E](ch: Chan[R, E]): Goal[R, E] = new Goal(ch)
 
@@ -54,7 +54,7 @@ object Goal {
         .provideSomeLayer[R](ZLayer.succeed(state))
         .concatMap(ZChannel.writeChunk)
     }
-    fromReadLoop(read)
+    fromReadLoop[R, E](read)
   }
 
   def fromPipeline[R, E](p: ZPipeline[R, E, State, Either[State, State]]): Goal[R, E] = {
@@ -63,7 +63,7 @@ object Goal {
       .mapOut(Chunk.succeed(_))
       .concatMap(ZChannel.write(_) >>> p.toChannel)
       .concatMap(ZChannel.writeChunk(_))
-    fromReadLoop(ch)
+    fromReadLoop[R, E](ch)
   }
 
   def fromZIO[R, E](f: ZIO[R with State, E, Either[State, State]]): Goal[R, E] =
@@ -84,7 +84,7 @@ object Goal {
 
   // Swaps a goal exit status, making it fail if successful or the other way around.
   def swap[R, E](g: Goal[R, E]): Goal[R, E] =
-    fromChannel(g.toChannel.mapOut(_.swap))
+    fromChannel[R, E](g.toChannel.mapOut(_.swap))
 
   // Rejects all success
   def reject: Goal[Any, Nothing] = fromFunction(Left(_))
@@ -128,7 +128,7 @@ object Goal {
   def disj[R, E](goals: IterableOnce[Goal[R, E]]): Goal[R, E] = {
     lazy val chunk = Chunk.fromIterator(goals.iterator.map(g => branch.pipeSuccessTo(g).channel))
     val ch         = ZChannel.mergeAll(ZChannel.writeChunk(chunk), n = 16)
-    Goal.fromChannel(ch)
+    Goal.fromChannel[R, E](ch)
   }
 
   // Creates a channel identical to the given one but that will only emit once and then stop reading
@@ -139,18 +139,18 @@ object Goal {
       halt = ZChannel.failCause(_),
       done = ZChannel.succeed(_)
     )
-    fromChannel(g.toChannel >>> ch)
+    fromChannel[R, E](g.toChannel >>> ch)
   }
 
   // Creates a goal identical to the given one but that will only ever consume one input.
   // Note that reading once from upstream will cause the stream to terminate.
   def readOnce[R, E](g: Goal[R, E]): Goal[R, E] = {
-    val ch = ZChannel.readWithCause[R, Any, State, Any, E, Either[State, State], Any](
+    val ch = ZChannel.readWithCause[R with Unify.UMap, Any, State, Any, E, Either[State, State], Any](
       in = ZChannel.write(_) >>> g.toChannel,
       halt = c => ZChannel.failCause(c.stripFailures),
       done = ZChannel.succeed(_)
     )
-    fromChannel(ch)
+    fromChannel[R, E](ch)
   }
 
   private def emitOnlyOnce[R, E](
@@ -168,7 +168,7 @@ object Goal {
         halt = ZChannel.failCause(_),
         done = ZChannel.succeed(_)
       )
-    fromChannel(g.toChannel >>> ch(false))
+    fromChannel[R, E](g.toChannel >>> ch(false))
   }
 
   // Creates a goal that is the same as the given goal but only emits once. But waits for upstream to finish.
