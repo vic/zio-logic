@@ -77,20 +77,25 @@ private[zkanren] object Api {
 //  }
 
   trait Implicits {
-    implicit class LeftTerm[A: Tag](private val a: LTerm[A]) {
-      def =:=[R, E](b: LTerm[A]): Goal[R, E] = Unifiers.terms[R, E, A].apply(a, b)
-      def =:=[R, E](b: A): Goal[R, E]        = Unifiers.terms[R, E, A].apply(a, LVal(b))
+    implicit def unifyAnyVal[A <: AnyVal]: Unify[Any, Nothing, A, A] = Unify.identity[A]
+
+    implicit def unifyTerm[R, E, A](implicit u: Unify[R, E, A, A]): Unify[R, E, LTerm[A], LTerm[A]] =
+      Unify.terms[R, E, A](u)
+
+    implicit val unifyString: Unify[Any, Nothing, String, String] = Unify.identity[String]
+
+    implicit def unifyIterables[R, E, A, B](implicit
+      u: Unify[R, E, A, B]
+    ): Unify[R, E, IterableOnce[A], IterableOnce[B]] = Unify.iterables[R, E, A, B](u)
+
+    implicit class LeftTerm[A](private val a: LTerm[A]) {
+      def =:=[R, E, B](b: LTerm[B])(implicit u: Unify[R, E, LTerm[A], LTerm[B]]): Goal[R, E] = u(a, b)
+      def =:=[R, E, B](b: B)(implicit u: Unify[R, E, LTerm[A], LTerm[B]]): Goal[R, E]        = u(a, LVal(b))
     }
 
     implicit class LeftVal[A: Tag](private val a: A) {
-      def =:=[R, E](b: LTerm[A]): Goal[R, E] = Unifiers.terms[R, E, A].apply(LVal(a), b)
-      def =:=[R, E](b: A): Goal[R, E]        = Unifiers.terms[R, E, A].apply(LVal(a), LVal(b))
-    }
-
-    implicit class UnifyOps[-R, +E, -A](private val u: Unify[R, E, A, A]) {
-      import zkanren.internal.Unify.UMap
-      def toLayer[A0 <: A](implicit tag: Tag[A0]): ZLayer[UMap, Nothing, UMap] =
-        ZLayer.fromZIO(ZIO.serviceWith[UMap](_.updated(tag.tag, u)))
+      def =:=[R, E, B](b: B)(implicit u: Unify[R, E, A, B]): Goal[R, E]                      = u(a, b)
+      def =:=[R, E, B](b: LTerm[B])(implicit u: Unify[R, E, LTerm[A], LTerm[B]]): Goal[R, E] = u(LVal(a), b)
     }
 
     implicit class GoalOps[-R, +E](private val self: Goal[R, E]) {
@@ -128,17 +133,13 @@ private[zkanren] object Api {
 
     type Unify1[-R, +E, -A]    = Unify[R, E, A, A]
     type Unify[-R, +E, -A, -B] = internal.Unify[R, E, A, B]
-    type U[-A]                 = internal.Unify.U[A]
-    type UMap                  = internal.Unify.UMap
 
     type Goal[-R, +E] = internal.Goal[R, E]
     lazy val Goal = internal.Goal
 
     lazy val Unify = internal.Unify
 
-    val emptyStateLayer: ULayer[State]   = State.empty
-    val emptyUnifiersLayer: ULayer[UMap] = ZLayer.succeed(Map.empty)
-
+    val emptyStateLayer: ULayer[State] = State.empty
   }
 
   trait FreshQuery {

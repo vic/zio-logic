@@ -1,7 +1,7 @@
 package zkanren.internal
 
 import zio.stream.{ZChannel, ZPipeline, ZStream}
-import zio.{Chunk, ZIO, ZLayer}
+import zio.{Chunk, Tag, ZIO, ZLayer}
 
 final class Goal[-R, +E] private[Goal] (private val channel: Goal.Chan[R, E]) extends AnyVal { self =>
   @inline def and[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
@@ -27,7 +27,7 @@ final class Goal[-R, +E] private[Goal] (private val channel: Goal.Chan[R, E]) ex
 
   @inline def toChannel: Goal.Chan[R, E] = channel
 
-  def toStream: ZStream[R with Unify.UMap with State, E, Either[State, State]] = {
+  def toStream: ZStream[R with State, E, Either[State, State]] = {
     lazy val chan = ZChannel.serviceWithChannel[State] { state =>
       ZChannel.write(state) >>> channel.mapOut(Chunk.succeed)
     }
@@ -41,7 +41,7 @@ object Goal {
    * A goal channel transforms input states into either unified or not-unifiable states.
    * It can be seen as a function: `State => ZIO[R, E, Either[State, State]]`
    */
-  type Chan[-R, +E] = ZChannel[R with Unify.UMap, Any, State, Any, E, Either[State, State], Any]
+  type Chan[-R, +E] = ZChannel[R, Any, State, Any, E, Either[State, State], Any]
 
   def fromChannel[R, E](ch: Chan[R, E]): Goal[R, E] = new Goal(ch)
 
@@ -145,7 +145,7 @@ object Goal {
   // Creates a goal identical to the given one but that will only ever consume one input.
   // Note that reading once from upstream will cause the stream to terminate.
   def readOnce[R, E](g: Goal[R, E]): Goal[R, E] = {
-    val ch = ZChannel.readWithCause[R with Unify.UMap, Any, State, Any, E, Either[State, State], Any](
+    val ch = ZChannel.readWithCause[R, Any, State, Any, E, Either[State, State], Any](
       in = ZChannel.write(_) >>> g.toChannel,
       halt = c => ZChannel.failCause(c.stripFailures),
       done = ZChannel.succeed(_)
@@ -184,8 +184,8 @@ object Goal {
   // goals where we only need evidence of at least one success.
   def race[R, E](goals: IterableOnce[Goal[R, E]]): Goal[R, E] = succeedOnce(disj(goals))
 
-  def provideUnifier[R, E, A: Tag](u: Unify[R, E, A, A])(g: Goal[R, E]): Goal[R, E] = {
-    val chan = g.toChannel.provideSomeLayer[R with Unify.UMap](u.toLayer[A])
-    Goal.fromChannel[R, E](chan)
-  }
+//  def provideUnifier[R, E, A: Tag](u: Unify[R, E, A, A])(g: Goal[R, E]): Goal[R, E] = {
+//    val chan = g.toChannel.provideSomeLayer[R with Unify.UMap](u.toLayer[A])
+//    Goal.fromChannel[R, E](chan)
+//  }
 }

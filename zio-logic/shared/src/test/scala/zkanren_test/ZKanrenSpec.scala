@@ -9,12 +9,12 @@ import zkanren._
 
 object ZKanrenSpec extends ZIOSpecDefault {
 
-  def testRunEmpty(program: ZStream[State with UMap, Nothing, Any]): ZIO[State with UMap, Nothing, TestResult] =
+  def testRunEmpty(program: ZStream[State, Nothing, Any]): ZIO[State, Nothing, TestResult] =
     program.runHead.map(head => assertTrue(head.isEmpty))
 
   def testRunSingle[T](
-    program: ZStream[State with UMap, Nothing, Any]
-  )(test: T => TestResult): ZIO[State with UMap, Nothing, TestResult] =
+    program: ZStream[State, Nothing, Any]
+  )(test: T => TestResult): ZIO[State, Nothing, TestResult] =
     program.runHead.map {
       case Some(t: T) =>
         test(t)
@@ -65,7 +65,7 @@ object ZKanrenSpec extends ZIOSpecDefault {
         age: T[Int]
       )
 
-      val unifyPerson: Unify1[Any, Nothing, Person[LTerm]] = Unify.one[Person[LTerm]] { case (a, b) =>
+      implicit val unifyPerson: Unify1[Any, Nothing, Person[LTerm]] = Unify.one[Person[LTerm]] { case (a, b) =>
         a.name =:= b.name && a.age =:= b.age
       }
 
@@ -95,6 +95,6 @@ object ZKanrenSpec extends ZIOSpecDefault {
       testUnificationOverCustomProduct
 //      testDefineATermFunction
     )
-  ).provideCustomLayer(emptyStateLayer ++ emptyUnifiersLayer) @@ timed
+  ).provideCustomLayer(emptyStateLayer) @@ timed
 
 }
