@@ -54,6 +54,23 @@ object ZKanrenSpec extends ZIOSpecDefault {
       testRunSingle[LVal[Int]](program)(a => assertTrue(a.value == 99))
     }
 
+  private val testUnificationOverIdentity =
+    test("unification over identity") {
+      final case object Singleton
+      implicit val idUnification: Unify[Any, Nothing, Singleton.type, Singleton.type] = Unify.identity[Singleton.type]
+
+      val program = query1[Any, Nothing, Singleton.type](a => Singleton =:= a)
+      testRunSingle[LVal[Singleton.type]](program)(a => assertTrue(a.value == Singleton))
+    }
+
+  private val testUnificationOverTuple =
+    test("unification over tuple2") {
+      val program = query1[Any, Nothing, Int] { a =>
+        (a, lval(33)) =:= (lval(33), a)
+      }
+      testRunSingle[LVal[Int]](program)(a => assertTrue(a.value == 33))
+    }
+
   private val testUnificationOfIterablesOfSameLength =
     test("unification over iterables of same length") {
       def assertUnifyIterables(
@@ -130,6 +147,8 @@ object ZKanrenSpec extends ZIOSpecDefault {
       testEmptyUnification,
       testUnificationOfVariableToItself,
       testUnificationOfVariableToValue,
+      testUnificationOverIdentity,
+      testUnificationOverTuple,
       testUnificationOfIterablesOfSameLength,
       testUnificationOverCustomProduct,
       testUnificationOverOption

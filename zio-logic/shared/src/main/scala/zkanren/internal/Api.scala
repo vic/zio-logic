@@ -8,55 +8,6 @@ private[zkanren] trait Api extends Api.Exports with Api.FreshQuery with Api.Micr
 private[zkanren] object Api {
 //  implicit def swapUnify[R, E, A, B](implicit u: Unify[R, E, A, B]): Unify[R, E, B, A] = { case (b, a) => u(a, b) }
 
-//  implicit def tuple1Unify[R, E, A0, A1](implicit u1: Unify[R, E, A0, A1]): Unify[R, E, Tuple1[A0], Tuple1[A1]] = {
-//    case (l, r) => l._1 =:= r._1
-//  }
-//
-//  implicit def tuple2Unify[R, X, A0, A1, B0, B1](implicit
-//    u1: Unify[R, X, A0, A1],
-//    u2: Unify[R, X, B0, B1]
-//  ): Unify[R, X, (A0, B0), (A1, B1)] = { case (l, r) =>
-//    Goal.conj(Seq(l._1 =:= r._1, l._2 =:= r._2))
-//  }
-//
-//  implicit def tuple3Unify[R, X, A0, A1, B0, B1, C0, C1](implicit
-//    u1: Unify[R, X, A0, A1],
-//    u2: Unify[R, X, B0, B1],
-//    u3: Unify[R, X, C0, C1]
-//  ): Unify[R, X, (A0, B0, C0), (A1, B1, C1)] = { case (l, r) =>
-//    Goal.conj(Seq(l._1 =:= r._1, l._2 =:= r._2, l._3 =:= r._3))
-//  }
-//
-//  implicit def tuple4Unify[R, X, A0, A1, B0, B1, C0, C1, D0, D1](implicit
-//    u1: Unify[R, X, A0, A1],
-//    u2: Unify[R, X, B0, B1],
-//    u3: Unify[R, X, C0, C1],
-//    u4: Unify[R, X, D0, D1]
-//  ): Unify[R, X, (A0, B0, C0, D0), (A1, B1, C1, D1)] = { case (l, r) =>
-//    Goal.conj(Seq(l._1 =:= r._1, l._2 =:= r._2, l._3 =:= r._3, l._4 =:= r._4))
-//  }
-//
-//  implicit def tuple5Unify[R, X, A0, A1, B0, B1, C0, C1, D0, D1, E0, E1](implicit
-//    u1: Unify[R, X, A0, A1],
-//    u2: Unify[R, X, B0, B1],
-//    u3: Unify[R, X, C0, C1],
-//    u4: Unify[R, X, D0, D1],
-//    u5: Unify[R, X, E0, E1]
-//  ): Unify[R, X, (A0, B0, C0, D0, E0), (A1, B1, C1, D1, E1)] = { case (l, r) =>
-//    Goal.conj(Seq(l._1 =:= r._1, l._2 =:= r._2, l._3 =:= r._3, l._4 =:= r._4, l._5 =:= r._5))
-//  }
-//
-//  implicit def tuple6Unify[R, X, A0, A1, B0, B1, C0, C1, D0, D1, E0, E1, F0, F1](implicit
-//    u1: Unify[R, X, A0, A1],
-//    u2: Unify[R, X, B0, B1],
-//    u3: Unify[R, X, C0, C1],
-//    u4: Unify[R, X, D0, D1],
-//    u5: Unify[R, X, E0, E1],
-//    u6: Unify[R, X, F0, F1]
-//  ): Unify[R, X, (A0, B0, C0, D0, E0, F0), (A1, B1, C1, D1, E1, F1)] = { case (l, r) =>
-//    Goal.conj(Seq(l._1 =:= r._1, l._2 =:= r._2, l._3 =:= r._3, l._4 =:= r._4, l._5 =:= r._5, l._6 =:= r._6))
-//  }
-
 //  implicit class UnifyOps[+A](private val a: A) extends AnyVal {
 //
 //    def =:=[R, E, A0: Tag](b: LTerm[A0])(implicit ev: A <:< LTerm[A0]): Goal[R, E] =
@@ -87,6 +38,55 @@ private[zkanren] object Api {
     implicit def unifyIterables[R, E, A, B](implicit
       u: Unify[R, E, A, B]
     ): Unify[R, E, IterableOnce[A], IterableOnce[B]] = Unify.iterables[R, E, A, B](u)
+
+    implicit def tuple1Unify[R, E, A0, A1](implicit u1: Unify[R, E, A0, A1]): Unify[R, E, Tuple1[A0], Tuple1[A1]] = {
+      case (l, r) => l._1 =:= r._1
+    }
+
+    implicit def tuple2Unify[R, X, A0, A1, B0, B1](implicit
+      u1: Unify[R, X, A0, A1],
+      u2: Unify[R, X, B0, B1]
+    ): Unify[R, X, (A0, B0), (A1, B1)] = { case (l, r) =>
+      Goal.conj(Seq(l._1 =:= r._1, l._2 =:= r._2))
+    }
+
+    implicit def tuple3Unify[R, X, A0, A1, B0, B1, C0, C1](implicit
+      u1: Unify[R, X, A0, A1],
+      u2: Unify[R, X, B0, B1],
+      u3: Unify[R, X, C0, C1]
+    ): Unify[R, X, (A0, B0, C0), (A1, B1, C1)] = { case (l, r) =>
+      Goal.conj(Seq(l._1 =:= r._1, l._2 =:= r._2, l._3 =:= r._3))
+    }
+
+    implicit def tuple4Unify[R, X, A0, A1, B0, B1, C0, C1, D0, D1](implicit
+      u1: Unify[R, X, A0, A1],
+      u2: Unify[R, X, B0, B1],
+      u3: Unify[R, X, C0, C1],
+      u4: Unify[R, X, D0, D1]
+    ): Unify[R, X, (A0, B0, C0, D0), (A1, B1, C1, D1)] = { case (l, r) =>
+      Goal.conj(Seq(l._1 =:= r._1, l._2 =:= r._2, l._3 =:= r._3, l._4 =:= r._4))
+    }
+
+    implicit def tuple5Unify[R, X, A0, A1, B0, B1, C0, C1, D0, D1, E0, E1](implicit
+      u1: Unify[R, X, A0, A1],
+      u2: Unify[R, X, B0, B1],
+      u3: Unify[R, X, C0, C1],
+      u4: Unify[R, X, D0, D1],
+      u5: Unify[R, X, E0, E1]
+    ): Unify[R, X, (A0, B0, C0, D0, E0), (A1, B1, C1, D1, E1)] = { case (l, r) =>
+      Goal.conj(Seq(l._1 =:= r._1, l._2 =:= r._2, l._3 =:= r._3, l._4 =:= r._4, l._5 =:= r._5))
+    }
+
+    implicit def tuple6Unify[R, X, A0, A1, B0, B1, C0, C1, D0, D1, E0, E1, F0, F1](implicit
+      u1: Unify[R, X, A0, A1],
+      u2: Unify[R, X, B0, B1],
+      u3: Unify[R, X, C0, C1],
+      u4: Unify[R, X, D0, D1],
+      u5: Unify[R, X, E0, E1],
+      u6: Unify[R, X, F0, F1]
+    ): Unify[R, X, (A0, B0, C0, D0, E0, F0), (A1, B1, C1, D1, E1, F1)] = { case (l, r) =>
+      Goal.conj(Seq(l._1 =:= r._1, l._2 =:= r._2, l._3 =:= r._3, l._4 =:= r._4, l._5 =:= r._5, l._6 =:= r._6))
+    }
 
     implicit class LeftTerm[A](private val a: LTerm[A]) {
       def =:=[R, E, B](b: LTerm[B])(implicit u: Unify[R, E, LTerm[A], LTerm[B]]): Goal[R, E] = u(a, b)
