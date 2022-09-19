@@ -184,4 +184,8 @@ object Goal {
   // goals where we only need evidence of at least one success.
   def race[R, E](goals: IterableOnce[Goal[R, E]]): Goal[R, E] = succeedOnce(disj(goals))
 
+  def provideUnifier[R, E, A: Tag](u: Unify[R, E, A, A])(g: Goal[R, E]): Goal[R, E] = {
+    val chan = g.toChannel.provideSomeLayer[R with Unify.UMap](u.toLayer[A])
+    Goal.fromChannel[R, E](chan)
+  }
 }
