@@ -28,7 +28,7 @@ object Unify {
         state.unify(a, b).either.map {
           case Right(_)           => ZChannel.write(Right(state))
           case Left(None)         => ZChannel.write(Left(state))
-          case Left(Some((a, b))) => u(a.value, b.value).toChannel
+          case Left(Some((a, b))) => ZChannel.write(state) >>> u(a.value, b.value).toChannel
         }
       ZChannel.unwrap(makeChan.commit)
     }

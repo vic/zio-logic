@@ -30,9 +30,18 @@ object ZKanrenSpec extends ZIOSpecDefault {
     }
 
   private val testUnificationOfVariableToItself =
-    test("unification of forall values in variable") {
-      val program = query1[Any, Nothing, Int](a => 99 =:= 99)
-      testRunSingle[LVar[Int]](program)(v => assertTrue(v.variable == 0L))
+    suite("unification of same value") {
+      def assertUnifyToSelf(
+        goal: => Goal[Any, Nothing]
+      ): ZIO[zkanren.State, Nothing, TestResult] = {
+        val program = query1[Any, Nothing, Int](_ => goal)
+        testRunSingle[LVar[Int]](program)(v => assertTrue(v.variable == 0L))
+      }
+
+      test("both literals")(assertUnifyToSelf(99 =:= 99)) +
+        test("left lval")(assertUnifyToSelf(lval(99) =:= 99)) +
+        test("right lval")(assertUnifyToSelf(99 =:= lval(99))) +
+        test("both lval")(assertUnifyToSelf(lval(99) =:= lval(99)))
     }
 
   private val testUnificationOfVariableToValue =
@@ -46,15 +55,22 @@ object ZKanrenSpec extends ZIOSpecDefault {
     }
 
   private val testUnificationOfIterablesOfSameLength =
-    test("unification over iterables of same length") {
-      val program = query3[Any, Nothing, Int, Int, Int] { case (a, b, c) =>
-        val seq1 = Seq(a, lval(2), c)
-        val seq2 = Seq(lval(1), b, lval(3))
-        seq1 =:= seq2
+    suite("unification over iterables of same length") {
+      def assertUnifyIterables(
+        f: ((Seq[LTerm[Int]], Seq[LTerm[Int]])) => Goal[Any, Nothing]
+      ): ZIO[zkanren.State, Nothing, TestResult] = {
+        val program = query3[Any, Nothing, Int, Int, Int] { case (a, b, c) =>
+          val seq1 = Seq(a, lval(2), c)
+          val seq2 = Seq(lval(1), b, lval(3))
+          f(seq1, seq2)
+        }
+        testRunSingle[(LVal[Int], LVal[Int], LVal[Int])](program) { case (a, b, c) =>
+          assertTrue((a.value, b.value, c.value) == (1, 2, 3))
+        }
       }
-      testRunSingle[(LVal[Int], LVal[Int], LVal[Int])](program) { case (a, b, c) =>
-        assertTrue((a.value, b.value, c.value) == (1, 2, 3))
-      }
+
+      test("both scala vals")(assertUnifyIterables { case (as, bs) => as =:= bs }) +
+        test("both lvals")(assertUnifyIterables { case (as, bs) => lval(as) =:= lval(bs) })
     }
 
   private val testUnificationOverCustomProduct =

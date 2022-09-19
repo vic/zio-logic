@@ -79,7 +79,7 @@ private[zkanren] object Api {
   trait Implicits {
     implicit def unifyAnyVal[A <: AnyVal]: Unify[Any, Nothing, A, A] = Unify.identity[A]
 
-    implicit def unifyTerm[R, E, A](implicit u: Unify[R, E, A, A]): Unify[R, E, LTerm[A], LTerm[A]] =
+    implicit def unifyLTerm[R, E, A](implicit u: Unify[R, E, A, A]): Unify[R, E, LTerm[A], LTerm[A]] =
       Unify.terms[R, E, A](u)
 
     implicit val unifyString: Unify[Any, Nothing, String, String] = Unify.identity[String]
@@ -93,7 +93,7 @@ private[zkanren] object Api {
       def =:=[R, E, B](b: B)(implicit u: Unify[R, E, LTerm[A], LTerm[B]]): Goal[R, E]        = u(a, LVal(b))
     }
 
-    implicit class LeftVal[A: Tag](private val a: A) {
+    implicit class LeftVal[A](private val a: A) {
       def =:=[R, E, B](b: B)(implicit u: Unify[R, E, A, B]): Goal[R, E]                      = u(a, b)
       def =:=[R, E, B](b: LTerm[B])(implicit u: Unify[R, E, LTerm[A], LTerm[B]]): Goal[R, E] = u(LVal(a), b)
     }
