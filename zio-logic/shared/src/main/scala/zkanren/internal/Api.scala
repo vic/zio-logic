@@ -1,7 +1,7 @@
 package zkanren.internal
 
 import zio.stm.ZSTM
-import zio.{Duration, Tag, ULayer, ZIO, ZLayer}
+import zio.{Duration, ULayer, ZIO}
 import zkanren.internal
 
 private[zkanren] trait Api extends Api.Exports with Api.FreshQuery with Api.Micro with Api.Implicits

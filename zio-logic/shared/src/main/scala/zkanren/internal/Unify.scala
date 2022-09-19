@@ -1,10 +1,7 @@
 package zkanren.internal
 
-import izumi.reflect.macrortti.LightTypeTag
-import zio.{Tag, ZIO}
 import zio.stm.ZSTM
 import zio.stream.ZChannel
-import zkanren.internal.Goal.Chan
 
 // A unifier tries to unify A and B under some goal.
 trait Unify[-R, +E, -A, -B] extends ((A, B) => Goal[R, E])
@@ -24,7 +21,7 @@ object Unify {
 
   def terms[R, E, A](implicit u: Unify[R, E, A, A]): Unify[R, E, LTerm[A], LTerm[A]] = { case (a, b) =>
     Goal.fromReadLoop[R, E] { state =>
-      val makeChan: ZSTM[R, E, Chan[R, E]] =
+      val makeChan: ZSTM[R, E, Goal.Chan[R, E]] =
         state.unify(a, b).either.map {
           case Right(_)           => ZChannel.write(Right(state))
           case Left(None)         => ZChannel.write(Left(state))
@@ -47,47 +44,12 @@ object Unify {
     Goal.conj(goals)
   }
 
-}
+  def headOfIterable[R, E, A, B](implicit u: Unify[R, E, A, B]): Unify[R, E, A, Iterable[B]] = { case (a, bs) =>
+    iterables(u)(Some(a), bs.headOption)
+  }
 
-//object Unifiers {
-//
-//
-//  private[zkanren] def values[R, E, A: Tag, B: Tag]: Unify[R, E, A, B] = { case (a, b) =>
-//    val ch = ZChannel.serviceWithChannel[Unify.UMap] { umap =>
-//      umap.get(Tag[(A, B)].tag) match {
-//        case Some(u: Unify[R, E, A, B]) => u(a, b).toChannel
-//        case _                          => Goal.reject.toChannel
-//      }
-//    }
-//    Goal.fromChannel[R, E](ch)
-//  }
-//
-//  private[zkanren] def terms[R, E, A: Tag]: Unify[R, E, LTerm[A], LTerm[A]] = { case (a, b) =>
-//    Goal.fromReadLoop[R, E] { state =>
-//      val makeChan: ZSTM[R, E, Chan[R, E]] =
-//        state.unify(a, b).either.map {
-//          case Right(_)           => ZChannel.write(Right(state))
-//          case Left(None)         => ZChannel.write(Left(state))
-//          case Left(Some((a, b))) => values[R, E, A, A].apply(a.value, b.value).toChannel
-//        }
-//      ZChannel.unwrap(makeChan.commit)
-//    }
-//  }
-//
-//  private[zkanren] def options[R, E, A, B](implicit u: Unify[R, E, A, B]): Unify[R, E, Option[A], Option[B]] = {
-//    case (Some(a), Some(b)) => u(a, b)
-//    case (None, None)       => Goal.accept
-//    case _                  => Goal.reject
-//  }
-//
-//  // Unifies if a is the head of bs.
-//  private[zkanren] def headOfIterable[R, E, A, B](implicit
-//    u: Unify[R, E, A, B]
-//  ): Unify[R, E, A, Iterable[B]] = { case (a, bs) => options(u)(Some(a), bs.headOption) }
-//
-//  // Unifies if as is the tail of bs.
-//  private[zkanren] def tailOfIterable[R, E, A, B](implicit
-//    u: Unify[R, E, A, B]
-//  ): Unify[R, E, Iterable[A], Iterable[B]] = { case (as, bs) => iterables(u)(as, bs.tail) }
-//
-//}
+  def tailOfIterable[R, E, A, B](implicit u: Unify[R, E, A, B]): Unify[R, E, IterableOnce[A], Iterable[B]] = {
+    case (as, bs) => iterables(u)(as, bs.tail)
+  }
+
+}

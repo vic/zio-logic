@@ -55,7 +55,7 @@ object ZKanrenSpec extends ZIOSpecDefault {
     }
 
   private val testUnificationOfIterablesOfSameLength =
-    suite("unification over iterables of same length") {
+    test("unification over iterables of same length") {
       def assertUnifyIterables(
         f: ((Seq[LTerm[Int]], Seq[LTerm[Int]])) => Goal[Any, Nothing]
       ): ZIO[zkanren.State, Nothing, TestResult] = {
@@ -69,12 +69,11 @@ object ZKanrenSpec extends ZIOSpecDefault {
         }
       }
 
-      test("both scala vals")(assertUnifyIterables { case (as, bs) => as =:= bs }) +
-        test("both lvals")(assertUnifyIterables { case (as, bs) => lval(as) =:= lval(bs) })
+      assertUnifyIterables { case (as, bs) => as =:= bs }
     }
 
   private val testUnificationOverCustomProduct =
-    test("unification over custom product") {
+    suite("unification over custom product") {
 
       case class Person[T[+_]](
         name: T[String],
@@ -85,16 +84,40 @@ object ZKanrenSpec extends ZIOSpecDefault {
         a.name =:= b.name && a.age =:= b.age
       }
 
-      val program = query2[Any, Nothing, String, Int] { case (name, age) =>
-        val a: Person[LTerm] = Person(name = name, age = lval(22))
-        val b: Person[LTerm] = Person(name = lval("Melo"), age = age)
-        a =:= b
+      def check(f: ((Person[LTerm], Person[LTerm]) => Goal[Any, Nothing])): ZIO[zkanren.State, Nothing, TestResult] = {
+        val program = query2[Any, Nothing, String, Int] { case (name, age) =>
+          val a: Person[LTerm] = Person(name = name, age = lval(22))
+          val b: Person[LTerm] = Person(name = lval("Melo"), age = age)
+          f(a, b)
+        }
+
+        testRunSingle[(LVal[String], LVal[Int])](program) { case (a, b) =>
+          assertTrue((a.value, b.value) == ("Melo", 22))
+        }
       }
 
-      testRunSingle[(LVal[String], LVal[Int])](program) { case (a, b) =>
-        assertTrue((a.value, b.value) == ("Melo", 22))
-      }
+      test("both values")(check { case (a, b) => a =:= b }) +
+        test("both terms")(check { case (a, b) => lval(a) =:= lval(b) })
     }
+
+  private val testUnificationOverOption = suite("unification over option") {
+    test("Some and None do not unify") {
+      val program = query1[Any, Nothing, Int] { v =>
+        val a = Some(v)
+        val b = None
+        a =:= b
+      }
+      testRunEmpty(program)
+    } +
+      test("Some(lvar) and Some(lval) do unify") {
+        val program = query1[Any, Nothing, Int] { v =>
+          val a = Some(v)
+          val b = Some(lval(99))
+          a =:= b
+        }
+        testRunSingle[LVal[Int]](program)(v => assertTrue(v.value == 99))
+      }
+  }
 
 //  private val testDefineATermFunction = test("termo creates a term unifying function") {
 //    val x       = termo1[Any, Nothing, Int](_ =:= lval(5))
@@ -108,7 +131,8 @@ object ZKanrenSpec extends ZIOSpecDefault {
       testUnificationOfVariableToItself,
       testUnificationOfVariableToValue,
       testUnificationOfIterablesOfSameLength,
-      testUnificationOverCustomProduct
+      testUnificationOverCustomProduct,
+      testUnificationOverOption
 //      testDefineATermFunction
     )
   ).provideCustomLayer(emptyStateLayer) @@ timed
