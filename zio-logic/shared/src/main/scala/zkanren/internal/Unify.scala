@@ -24,19 +24,23 @@ object Unify {
 
 object Unifiers {
 
+  private[zkanren] def values[R, E, A: Tag, B: Tag]: Unify[R, E, A, B] = { case (a, b) =>
+    val ch = ZChannel.serviceWithChannel[Unify.UMap] { umap =>
+      umap.get(Tag[(A, B)].tag) match {
+        case Some(u: Unify[R, E, A, B]) => u(a, b).toChannel
+        case _                          => Goal.reject.toChannel
+      }
+    }
+    Goal.fromChannel[R, E](ch)
+  }
+
   private[zkanren] def terms[R, E, A: Tag]: Unify[R, E, LTerm[A], LTerm[A]] = { case (a, b) =>
     Goal.fromReadLoop[R, E] { state =>
       val makeChan: ZSTM[R, E, Chan[R, E]] =
         state.unify(a, b).either.map {
           case Right(_)           => ZChannel.write(Right(state))
           case Left(None)         => ZChannel.write(Left(state))
-          case Left(Some((a, b))) =>
-            ZChannel.serviceWithChannel[Unify.UMap] { umap =>
-              umap.get(Tag[A].tag) match {
-                case Some(u: Unify[R, E, A, A]) => u(a.value, b.value).toChannel
-                case _                          => ZChannel.write(Left(state))
-              }
-            }
+          case Left(Some((a, b))) => values[R, E, A, A].apply(a.value, b.value).toChannel
         }
       ZChannel.unwrap(makeChan.commit)
     }
