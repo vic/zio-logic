@@ -10,7 +10,7 @@ import zkanren.internal.Goal.Chan
 trait Unify[-R, +E, -A, -B] extends ((A, B) => Goal[R, E])
 
 object Unify {
-  type UMap = Map[LightTypeTag, U[Any]]
+  type UMap = Map[LightTypeTag, Any]
 
   type U[-A] = Unify[Any, Nothing, A, A]
 
@@ -22,7 +22,7 @@ object Unify {
   }
 }
 
-private[internal] object Unifiers {
+object Unifiers {
 
   private[zkanren] def terms[R, E, A: Tag]: Unify[R, E, LTerm[A], LTerm[A]] = { case (a, b) =>
     Goal.fromReadLoop[R, E] { state =>
@@ -31,10 +31,10 @@ private[internal] object Unifiers {
           case Right(_)           => ZChannel.write(Right(state))
           case Left(None)         => ZChannel.write(Left(state))
           case Left(Some((a, b))) =>
-            ZChannel.environmentWithChannel[Unify.UMap] { env =>
-              env.getAt[LightTypeTag, Unify[Any, Nothing, A, A]](Tag[A].tag) match {
-                case Some(u) => u(a.value, b.value).toChannel
-                case _       => ZChannel.write(Left(state))
+            ZChannel.serviceWithChannel[Unify.UMap] { umap =>
+              umap.get(Tag[A].tag) match {
+                case Some(u: Unify[R, E, A, A]) => u(a.value, b.value).toChannel
+                case _                          => ZChannel.write(Left(state))
               }
             }
         }
@@ -48,7 +48,7 @@ private[internal] object Unifiers {
     case _                  => Goal.reject
   }
 
-  private[zkanren] def iterables[R, E, A, B](implicit
+  def iterables[R, E, A, B](implicit
     u: Unify[R, E, A, B]
   ): Unify[R, E, IterableOnce[A], IterableOnce[B]] = { case (a, b) =>
     val ab = a.iterator.map(Some(_)).zipAll(b.iterator.map(Some(_)), None, None)

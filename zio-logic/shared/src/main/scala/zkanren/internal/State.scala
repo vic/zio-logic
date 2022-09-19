@@ -94,7 +94,7 @@ private[internal] object State {
       val (bVal, bSeen) = walk(b, Seq(b))(bindings)
 
       (aVal, bVal) match {
-        case (x: LVar[A], y: LVar[A]) if aSeen.contains(y) || bSeen.contains(x) => MutualReference
+        case (x, y) if aSeen.contains(y) || bSeen.contains(x) => MutualReference
 
         case (x: LVar[A], y: LVar[A]) if x.variable == y.variable => AlreadySame
         case (x: LVal[A], y: LVal[A]) if x.value == y.value       => AlreadySame

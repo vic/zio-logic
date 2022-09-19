@@ -25,7 +25,7 @@ object ZKanrenSpec extends ZIOSpecDefault {
 
   private val testEmptyUnification =
     test("empty unification") {
-      val program = query1[Any, Nothing, Int](a => 99 =:= 22)
+      val program = query1[Any, Nothing, Int].apply(a => 99 =:= 22)
       testRunEmpty(program)
     }
 
@@ -38,7 +38,9 @@ object ZKanrenSpec extends ZIOSpecDefault {
   private val testUnificationOfVariableToValue =
     test("unification binds variables assigned to other variables until a val is found.") {
       val program = query1[Any, Nothing, Int] { a =>
-        fresh3[Int, Int, Int] { case (x, y, z) => a =:= z && x =:= 99 && z =:= y && x =:= y }
+        fresh3[Int, Int, Int] { case (x, y, z) =>
+          a =:= z && x =:= 99 && z =:= y && x =:= y
+        }
       }
       testRunSingle[LVal[Int]](program)(a => assertTrue(a.value == 99))
     }
@@ -93,6 +95,6 @@ object ZKanrenSpec extends ZIOSpecDefault {
       testUnificationOverCustomProduct
 //      testDefineATermFunction
     )
-  ).provideCustomLayer(emptyStateLayer) @@ timed
+  ).provideCustomLayer(emptyStateLayer ++ emptyUnifiersLayer) @@ timed
 
 }

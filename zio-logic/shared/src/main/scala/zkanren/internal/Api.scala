@@ -4,7 +4,7 @@ import zio.stm.ZSTM
 import zio.{Duration, Tag, ULayer, ZIO, ZLayer}
 import zkanren.internal
 
-private[zkanren] trait Api extends Api.Exports with Api.FreshQuery with Api.Micro with Api.UnifyOps
+private[zkanren] trait Api extends Api.Exports with Api.FreshQuery with Api.Micro with Api.Implicits
 private[zkanren] object Api {
 //  implicit def swapUnify[R, E, A, B](implicit u: Unify[R, E, A, B]): Unify[R, E, B, A] = { case (b, a) => u(a, b) }
 
@@ -76,7 +76,7 @@ private[zkanren] object Api {
 ////    @inline def =!=[R, E, B](b: B)(implicit unify: Unify[R, E, A, B]): Goal[R, E] = Goal.neg(unify(a, b))
 //  }
 
-  trait UnifyOps {
+  trait Implicits {
     implicit class LeftTerm[A: Tag](private val a: LTerm[A]) {
       def =:=[R, E](b: LTerm[A]): Goal[R, E] = Unifiers.terms[R, E, A].apply(a, b)
       def =:=[R, E](b: A): Goal[R, E]        = Unifiers.terms[R, E, A].apply(a, LVal(b))
@@ -86,28 +86,35 @@ private[zkanren] object Api {
       def =:=[R, E](b: LTerm[A]): Goal[R, E] = Unifiers.terms[R, E, A].apply(LVal(a), b)
       def =:=[R, E](b: A): Goal[R, E]        = Unifiers.terms[R, E, A].apply(LVal(a), LVal(b))
     }
-  }
 
-  implicit class GoalOps[-R, +E](private val self: Goal[R, E]) {
-    @inline def &&[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
-      self and goal
+    implicit class UnifyOps[-R, +E, -A](private val u: Unify[R, E, A, A]) {
+      import zkanren.internal.Unify.UMap
+      def toLayer[A0 <: A](implicit tag: Tag[A0]): ZLayer[UMap, Nothing, UMap] =
+        ZLayer.fromZIO(ZIO.serviceWith[UMap](_.updated(tag.tag, u)))
+    }
 
-    @inline def ||[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
-      self or goal
+    implicit class GoalOps[-R, +E](private val self: Goal[R, E]) {
+      @inline def &&[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
+        self and goal
 
-    @inline def &>[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
-      self pipeSuccessTo goal
+      @inline def ||[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
+        self or goal
 
-    @inline def |>[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
-      self pipeFailureTo goal
+      @inline def &>[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
+        self pipeSuccessTo goal
 
-    @inline def >>[R1 <: R, E1 >: E](f: Goal[R, E] => Goal[R1, E1]): Goal[R1, E1] =
-      f(self)
+      @inline def |>[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
+        self pipeFailureTo goal
 
-  }
+      @inline def >>[R1 <: R, E1 >: E](f: Goal[R, E] => Goal[R1, E1]): Goal[R1, E1] =
+        f(self)
 
-  implicit class GoalFOps[+IR, -IE, -OR, +OE](private val f: Goal[IR, IE] => Goal[OR, OE]) {
-    @inline def <<(g: Goal[IR, IE]): Goal[OR, OE] = f(g)
+    }
+
+    implicit class GoalFOps[+IR, -IE, -OR, +OE](private val f: Goal[IR, IE] => Goal[OR, OE]) {
+      @inline def <<(g: Goal[IR, IE]): Goal[OR, OE] = f(g)
+    }
+
   }
 
   trait Exports {
@@ -129,53 +136,46 @@ private[zkanren] object Api {
 
     lazy val Unify = internal.Unify
 
-    lazy val emptyStateLayer: ULayer[State with UMap] = State.empty ++ ZLayer.succeed[UMap](Map.empty)
+    val emptyStateLayer: ULayer[State]   = State.empty
+    val emptyUnifiersLayer: ULayer[UMap] = ZLayer.succeed(Map.empty)
 
-    @inline implicit def goalOps[R, E] = Api.GoalOps[R, E] _
-
-//    @inline implicit def unifyTerms[R: Tag, E: Tag, A: Tag] = Unifiers.terms[R, E, A]
-
-//    @inline implicit def unifyIterables[R, E, A, B](implicit
-//      u: Unify[R, E, A, B]
-//    ): Unify[R, E, IterableOnce[A], IterableOnce[B]] =
-//      Unifiers.iterables[R, E, A, B]
   }
 
   trait FreshQuery {
     @inline def lval[A] = LVal[A] _
 
-    @inline def lvar_[A]                         = Fresh.lvar[A]
-    @inline def lvar1[A]                         = lvar_[A]
-    @inline def lvar2[A, B]                      = lvar_[A] zip lvar_[B]
-    @inline def lvar3[A, B, C]                   = lvar2[A, B] zip lvar_[C]
-    @inline def lvar4[A, B, C, D]                = lvar3[A, B, C] zip lvar_[D]
-    @inline def lvar5[A, B, C, D, E]             = lvar4[A, B, C, D] zip lvar_[E]
-    @inline def lvar6[A, B, C, D, E, F]          = lvar5[A, B, C, D, E] zip lvar_[F]
-    @inline def lvar7[A, B, C, D, E, F, G]       = lvar6[A, B, C, D, E, F] zip lvar_[G]
-    @inline def lvar8[A, B, C, D, E, F, G, H]    = lvar7[A, B, C, D, E, F, G] zip lvar_[H]
-    @inline def lvar9[A, B, C, D, E, F, G, H, I] = lvar8[A, B, C, D, E, F, G, H] zip lvar_[I]
+    @inline def lvar[A]                          = Fresh.lvar[A]
+    @inline def lvar1[A]                         = lvar[A]
+    @inline def lvar2[A, B]                      = lvar1[A] zip lvar1[B]
+    @inline def lvar3[A, B, C]                   = lvar2[A, B] zip lvar[C]
+    @inline def lvar4[A, B, C, D]                = lvar3[A, B, C] zip lvar[D]
+    @inline def lvar5[A, B, C, D, E]             = lvar4[A, B, C, D] zip lvar[E]
+    @inline def lvar6[A, B, C, D, E, F]          = lvar5[A, B, C, D, E] zip lvar[F]
+    @inline def lvar7[A, B, C, D, E, F, G]       = lvar6[A, B, C, D, E, F] zip lvar[G]
+    @inline def lvar8[A, B, C, D, E, F, G, H]    = lvar7[A, B, C, D, E, F, G] zip lvar[H]
+    @inline def lvar9[A, B, C, D, E, F, G, H, I] = lvar8[A, B, C, D, E, F, G, H] zip lvar[I]
 
-    @inline def fresh_[V]                         = Fresh.fresh[V] _
-    @inline def fresh1[A]                         = fresh_(lvar_[A])
-    @inline def fresh2[A, B]                      = fresh_(lvar2[A, B])
-    @inline def fresh3[A, B, C]                   = fresh_(lvar3[A, B, C])
-    @inline def fresh4[A, B, C, D]                = fresh_(lvar4[A, B, C, D])
-    @inline def fresh5[A, B, C, D, E]             = fresh_(lvar5[A, B, C, D, E])
-    @inline def fresh6[A, B, C, D, E, F]          = fresh_(lvar6[A, B, C, D, E, F])
-    @inline def fresh7[A, B, C, D, E, F, G]       = fresh_(lvar7[A, B, C, D, E, F, G])
-    @inline def fresh8[A, B, C, D, E, F, G, H]    = fresh_(lvar8[A, B, C, D, E, F, G, H])
-    @inline def fresh9[A, B, C, D, E, F, G, H, I] = fresh_(lvar9[A, B, C, D, E, F, G, H, I])
+    @inline def _fresh[V]                         = Fresh.fresh[V] _
+    @inline def fresh1[A]                         = _fresh(lvar1[A])
+    @inline def fresh2[A, B]                      = _fresh(lvar2[A, B])
+    @inline def fresh3[A, B, C]                   = _fresh(lvar3[A, B, C])
+    @inline def fresh4[A, B, C, D]                = _fresh(lvar4[A, B, C, D])
+    @inline def fresh5[A, B, C, D, E]             = _fresh(lvar5[A, B, C, D, E])
+    @inline def fresh6[A, B, C, D, E, F]          = _fresh(lvar6[A, B, C, D, E, F])
+    @inline def fresh7[A, B, C, D, E, F, G]       = _fresh(lvar7[A, B, C, D, E, F, G])
+    @inline def fresh8[A, B, C, D, E, F, G, H]    = _fresh(lvar8[A, B, C, D, E, F, G, H])
+    @inline def fresh9[A, B, C, D, E, F, G, H, I] = _fresh(lvar9[A, B, C, D, E, F, G, H, I])
 
-    @inline def query_[V]                               = Query.query[V] _
-    @inline def query1[R, X, A]                         = query_(lvar_[A]).apply[R, X] _
-    @inline def query2[R, X, A, B]                      = query_(lvar2[A, B]).apply[R, X] _
-    @inline def query3[R, X, A, B, C]                   = query_(lvar3[A, B, C]).apply[R, X] _
-    @inline def query4[R, X, A, B, C, D]                = query_(lvar4[A, B, C, D]).apply[R, X] _
-    @inline def query5[R, X, A, B, C, D, E]             = query_(lvar5[A, B, C, D, E]).apply[R, X] _
-    @inline def query6[R, X, A, B, C, D, E, F]          = query_(lvar6[A, B, C, D, E, F]).apply[R, X] _
-    @inline def query7[R, X, A, B, C, D, E, F, G]       = query_(lvar7[A, B, C, D, E, F, G]).apply[R, X] _
-    @inline def query8[R, X, A, B, C, D, E, F, G, H]    = query_(lvar8[A, B, C, D, E, F, G, H]).apply[R, X] _
-    @inline def query9[R, X, A, B, C, D, E, F, G, H, I] = query_(lvar9[A, B, C, D, E, F, G, H, I]).apply[R, X] _
+    @inline def _query[V]                               = Query.query[V] _
+    @inline def query1[R, X, A]                         = _query(lvar1[A]).apply[R, X] _
+    @inline def query2[R, X, A, B]                      = _query(lvar2[A, B]).apply[R, X] _
+    @inline def query3[R, X, A, B, C]                   = _query(lvar3[A, B, C]).apply[R, X] _
+    @inline def query4[R, X, A, B, C, D]                = _query(lvar4[A, B, C, D]).apply[R, X] _
+    @inline def query5[R, X, A, B, C, D, E]             = _query(lvar5[A, B, C, D, E]).apply[R, X] _
+    @inline def query6[R, X, A, B, C, D, E, F]          = _query(lvar6[A, B, C, D, E, F]).apply[R, X] _
+    @inline def query7[R, X, A, B, C, D, E, F, G]       = _query(lvar7[A, B, C, D, E, F, G]).apply[R, X] _
+    @inline def query8[R, X, A, B, C, D, E, F, G, H]    = _query(lvar8[A, B, C, D, E, F, G, H]).apply[R, X] _
+    @inline def query9[R, X, A, B, C, D, E, F, G, H, I] = _query(lvar9[A, B, C, D, E, F, G, H, I]).apply[R, X] _
 
 //    def termo1[R, X, A](f: LVar[A] => Goal[R, X]): LTerm[A] => Goal[R with Unify.U[A], X] =
 //      (t: LTerm[A]) => fresh1[A](v => v =:= t && f(v))
