@@ -1,5 +1,6 @@
 package zkanren.internal
 
+import zio.Tag
 import zio.stm.ZSTM
 import zio.stream.ZChannel
 
@@ -7,25 +8,34 @@ import zio.stream.ZChannel
 trait Unify[-R, +E, -A, -B] extends ((A, B) => Goal[R, E])
 
 object Unify {
-  @inline def one[A]: PartiallyApplied[A, A]      = new PartiallyApplied[A, A]
-  @inline def apply[A, B]: PartiallyApplied[A, B] = new PartiallyApplied[A, B]
+  @inline def one[A]: PartiallyApplied[A, A]    = new PartiallyApplied[A, A]
+  @inline def two[A, B]: PartiallyApplied[A, B] = new PartiallyApplied[A, B]
 
   private[Unify] class PartiallyApplied[A, B] private[Unify] () {
     @inline def apply[R, E](f: (A, B) => Goal[R, E]): Unify[R, E, A, B] = f(_, _)
   }
+
+  def never[A]: Unify[Any, Nothing, A, A] = { case (_, _) => ??? }
 
   def identity[A]: Unify[Any, Nothing, A, A] = {
     case (a, b) if a == b => Goal.accept
     case _                => Goal.reject
   }
 
-  def terms[R, E, A](implicit u: Unify[R, E, A, A]): Unify[R, E, LTerm[A], LTerm[A]] = { case (a, b) =>
+  def terms[R, E, A: Tag, B: Tag](
+    u: Unify[R, E, LTerm[A], LTerm[B]]
+  ): Unify[R, E, LTerm[A], LTerm[B]] = { case (a, b) =>
     Goal.fromReadLoop[R, E] { state =>
       val makeChan: ZSTM[R, E, Goal.Chan[R, E]] =
         state.unify(a, b).either.map {
-          case Right(_)           => ZChannel.write(Right(state))
-          case Left(None)         => ZChannel.write(Left(state))
-          case Left(Some((a, b))) => ZChannel.write(state) >>> u(a.value, b.value).toChannel
+          case Right(_) =>
+            ZChannel.write(Right(state))
+
+          case Left(State.UnequalTerms(x: LTerm[A], y: LTerm[B])) =>
+            ZChannel.write(state) >>> u(x, y).toChannel
+
+          case _ =>
+            ZChannel.write(Left(state))
         }
       ZChannel.unwrap(makeChan.commit)
     }

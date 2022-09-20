@@ -3,7 +3,7 @@ package zkanren_test
 import zio.ZIO
 import zio.stream.ZStream
 import zio.test.Assertion.assertion
-import zio.test.TestAspect.timed
+import zio.test.TestAspect.{ignore, timed}
 import zio.test.{TestResult, ZIOSpecDefault, assert, assertTrue}
 import zkanren._
 
@@ -63,6 +63,20 @@ object ZKanrenSpec extends ZIOSpecDefault {
       testRunSingle[LVal[Singleton.type]](program)(a => assertTrue(a.value == Singleton))
     }
 
+  private val testUnificationDifferentTypes =
+    test("unification over different types") {
+      val unifyStringLength = Unify.terms[Any, Nothing, String, Int] {
+        case (s: LVal[String], n: LTerm[Int]) => s.value.length =:= n
+        case _                                => Goal.reject
+      }
+
+      val program = query1[Any, Nothing, Int] { a =>
+        unifyStringLength(lval("Hello"), a)
+      }
+
+      testRunSingle[LVal[Int]](program)(a => assertTrue(a.value == 5))
+    }
+
   private val testUnificationOverTuple =
     test("unification over tuple2") {
       val program = query1[Any, Nothing, Int] { a =>
@@ -120,8 +134,8 @@ object ZKanrenSpec extends ZIOSpecDefault {
   private val testUnificationOverOption = suite("unification over option") {
     test("Some and None do not unify") {
       val program = query1[Any, Nothing, Int] { v =>
-        val a = Some(v)
-        val b = None
+        val a: Option[LTerm[Int]] = Some(v)
+        val b: Option[LTerm[Int]] = None
         a =:= b
       }
       testRunEmpty(program)
@@ -148,6 +162,7 @@ object ZKanrenSpec extends ZIOSpecDefault {
       testUnificationOfVariableToItself,
       testUnificationOfVariableToValue,
       testUnificationOverIdentity,
+      testUnificationDifferentTypes,
       testUnificationOverTuple,
       testUnificationOfIterablesOfSameLength,
       testUnificationOverCustomProduct,

@@ -1,43 +1,34 @@
 package zkanren.internal
 
 import zio.stm.ZSTM
-import zio.{Duration, ULayer, ZIO}
+import zio.{Duration, Tag, ULayer, ZIO}
 import zkanren.internal
 
 private[zkanren] trait Api extends Api.Exports with Api.FreshQuery with Api.Micro with Api.Implicits
 private[zkanren] object Api {
 //  implicit def swapUnify[R, E, A, B](implicit u: Unify[R, E, A, B]): Unify[R, E, B, A] = { case (b, a) => u(a, b) }
 
-//  implicit class UnifyOps[+A](private val a: A) extends AnyVal {
-//
-//    def =:=[R, E, A0: Tag](b: LTerm[A0])(implicit ev: A <:< LTerm[A0]): Goal[R, E] =
-//      Unifiers.terms[R, E, A0].apply(a, b)
-//
-//    def =:=[R, E, A0: Tag](b: A0)(implicit ev: A <:< LTerm[A0]): Goal[R, E] =
-//      Unifiers.terms[R, E, A0].apply(a, LVal(b))
-//
-//    def =:=[R, E, A0 >: A](b: LTerm[A0])(implicit t: Tag[A0]): Goal[R, E] =
-//      Unifiers.terms[R, E, A0].apply(LVal(a), b)
-//
-//    def =:=[R, E, A0 >: A](b: A0)(implicit t: Tag[A0]): Goal[R, E] =
-//      Unifiers.terms[R, E, A0].apply(LVal(a), LVal(b))
-//
-////    @inline def =:=[R, E, B](b: B)(implicit unify: Unify[R, E, A, B]): Goal[R, E] = unify(a, b)
-//
-////    @inline def =!=[R, E, B](b: B)(implicit unify: Unify[R, E, A, B]): Goal[R, E] = Goal.neg(unify(a, b))
-//  }
-
   trait Implicits {
     implicit def unifyAnyVal[A <: AnyVal]: Unify[Any, Nothing, A, A] = Unify.identity[A]
 
-    implicit def unifyLTerm[R, E, A](implicit u: Unify[R, E, A, A]): Unify[R, E, LTerm[A], LTerm[A]] =
-      Unify.terms[R, E, A](u)
+    implicit def unifyLTerm[R, E, A: Tag, B: Tag](implicit u: Unify[R, E, A, B]): Unify[R, E, LTerm[A], LTerm[B]] =
+      Unify.terms[R, E, A, B] {
+        case (a: LVal[A], b: LVal[B]) => u(a.value, b.value)
+        case _                        => Goal.reject
+      }
 
     implicit val unifyString: Unify[Any, Nothing, String, String] = Unify.identity[String]
 
     implicit def unifyIterables[R, E, A, B](implicit
       u: Unify[R, E, A, B]
     ): Unify[R, E, IterableOnce[A], IterableOnce[B]] = Unify.iterables[R, E, A, B](u)
+
+    implicit def unifyEither[R, E, L0, L1, R0, R1](implicit
+      ul: Unify[R, E, L0, L1],
+      ur: Unify[R, E, R0, R1]
+    ): Unify[R, E, Either[L0, R0], Either[L1, R1]] = { case (a, b) =>
+      a.fold(al => b.fold(bl => ul(al, bl), br => Goal.reject), ar => b.fold(bl => Goal.reject, br => ur(ar, br)))
+    }
 
     implicit def tuple1Unify[R, E, A0, A1](implicit u1: Unify[R, E, A0, A1]): Unify[R, E, Tuple1[A0], Tuple1[A1]] = {
       case (l, r) => l._1 =:= r._1

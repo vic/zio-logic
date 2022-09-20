@@ -1,13 +1,13 @@
 package zkanren.internal
 
 import zio.stm.{STM, TRef, URSTM, USTM, ZSTM}
-import zio.{ULayer, ZLayer}
+import zio.{Tag, ULayer, ZLayer}
 
 import scala.annotation.tailrec
 
 sealed trait State {
   def fresh[A]: USTM[LVar[A]]
-  private[internal] def unify[A](v: LTerm[A], t: LTerm[A]): STM[Option[(LVal[A], LVal[A])], Unit]
+  private[internal] def unify[A: Tag, B: Tag](v: LTerm[A], t: LTerm[B]): STM[State.Unbindable, Unit]
   def reify[A](v: LTerm[A]): USTM[LTerm[A]]
   def branch: USTM[State]
 }
@@ -31,11 +31,10 @@ private[internal] object State {
     override def fresh[A]: USTM[LVar[A]] =
       nextVar.getAndUpdate(_ + 1).map(LVar(_))
 
-    override def unify[A](v: LTerm[A], t: LTerm[A]): STM[Option[(LVal[A], LVal[A])], Unit] =
+    override def unify[A: Tag, B: Tag](v: LTerm[A], t: LTerm[B]): STM[Unbindable, Unit] =
       bindings.modify(BindingOps.bind(v, t)).flatMap {
-        case Left(BindingOps.MutualReference)         => STM.fail(None)
-        case Right(None)                              => STM.unit
-        case Right(Some(BindingOps.UnequalVal(a, b))) => STM.fail(Some(a -> b))
+        case None             => STM.unit
+        case Some(unbindable) => STM.fail(unbindable)
       }
 
     override def reify[A](v: LTerm[A]): USTM[LTerm[A]] =
@@ -58,17 +57,23 @@ private[internal] object State {
       bindings <- TRef.make[Bindings](Map.empty)
     } yield make(nextVar, bindings)
 
-  private[State] object BindingOps {
+  sealed trait BindTest
+  case object AlreadySame                                 extends BindTest
+  case class Assign[A](v: LVar[A], t: LTerm[A])           extends BindTest
+  sealed trait Unbindable                                 extends BindTest
+  case object MutualReference                             extends Unbindable
+  case class UnequalTerms[A, B](a: LTerm[A], b: LTerm[B]) extends Unbindable
+
+  private[internal] object BindingOps {
     type Bindings = Map[LVar[_], LTerm[_]]
 
-    private[State] def bind[A](x: LTerm[A], y: LTerm[A])(
+    private[State] def bind[A: Tag, B: Tag](x: LTerm[A], y: LTerm[B])(
       bindings: Bindings
-    ): (Either[MutualReference.type, Option[UnequalVal[A]]], Bindings) =
-      bindable[A](x, y)(bindings) match {
-        case AlreadySame      => Right(None)                   -> bindings
-        case Assignable(v, t) => Right(None)                   -> (bindings + (v -> t))
-        case MutualReference  => Left(MutualReference)         -> bindings
-        case UnequalVal(a, b) => Right(Some(UnequalVal(a, b))) -> bindings
+    ): (Option[Unbindable], Bindings) =
+      bindTest(x, y)(bindings) match {
+        case AlreadySame            => None             -> bindings
+        case Assign(v, t)           => None             -> (bindings + (v -> t))
+        case unbindable: Unbindable => Some(unbindable) -> bindings
       }
 
     @tailrec
@@ -83,26 +88,22 @@ private[internal] object State {
         case _          => (t, seen)
       }
 
-    sealed trait Bindable[+A]
-    case object MutualReference                       extends Bindable[Nothing]
-    case object AlreadySame                           extends Bindable[Nothing]
-    case class Assignable[A](v: LVar[A], t: LTerm[A]) extends Bindable[A]
-    case class UnequalVal[A](a: LVal[A], b: LVal[A])  extends Bindable[A]
+    private def bindTest[A: Tag, B: Tag](a: LTerm[A], b: LTerm[B])(bindings: Bindings): BindTest = {
+      val (aTag, bTag) = (Tag[A].tag, Tag[B].tag)
 
-    private def bindable[A](a: LTerm[A], b: LTerm[A])(bindings: Bindings): Bindable[A] = {
       val (aVal, aSeen) = walk(a, Seq(a))(bindings)
       val (bVal, bSeen) = walk(b, Seq(b))(bindings)
 
       (aVal, bVal) match {
+        case (x: LVal[_], y: LVal[_]) if x.value == y.value       => AlreadySame
+        case (x: LVar[_], y: LVar[_]) if x.variable == y.variable => AlreadySame
+
         case (x, y) if aSeen.contains(y) || bSeen.contains(x) => MutualReference
 
-        case (x: LVar[A], y: LVar[A]) if x.variable == y.variable => AlreadySame
-        case (x: LVal[A], y: LVal[A]) if x.value == y.value       => AlreadySame
-        case (x: LVal[A], y: LVal[A])                             => UnequalVal(x, y)
+        case (x: LVar[A], y: LTerm[B]) if aTag <:< bTag => Assign(x, y)
+        case (x: LTerm[A], y: LVar[B]) if bTag <:< aTag => Assign(y, x)
 
-        case (x: LVar[A], y: LVar[A]) => Assignable(x, y)
-        case (x: LVar[A], y: LVal[A]) => Assignable(x, y)
-        case (x: LVal[A], y: LVar[A]) => Assignable(y, x)
+        case (x, y) => UnequalTerms(x, y)
       }
     }
 
