@@ -8,6 +8,10 @@ import zio.stream.ZChannel
 trait Unify[-R, +E, -A, -B] extends ((A, B) => Goal[R, E])
 
 object Unify {
+  type Unify1[-R, +E, -A]     = Unify[R, E, A, A]
+  type UnifyT[-R, +E, -A, -B] = Unify[R, E, LTerm[A], LTerm[B]]
+  type Unify1T[-R, +E, -A]    = UnifyT[R, E, A, A]
+
   @inline def one[A]: PartiallyApplied[A, A]    = new PartiallyApplied[A, A]
   @inline def two[A, B]: PartiallyApplied[A, B] = new PartiallyApplied[A, B]
 
@@ -15,7 +19,7 @@ object Unify {
     @inline def apply[R, E](f: (A, B) => Goal[R, E]): Unify[R, E, A, B] = f(_, _)
   }
 
-  def never[A]: Unify[Any, Nothing, A, A] = { case (_, _) => ??? }
+  def never[A]: Unify[Any, Nothing, A, A] = { (_, _) => Goal.reject }
 
   def identity[A]: Unify[Any, Nothing, A, A] = {
     case (a, b) if a == b => Goal.accept

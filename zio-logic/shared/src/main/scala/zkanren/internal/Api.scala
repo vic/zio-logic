@@ -1,7 +1,8 @@
 package zkanren.internal
 
 import zio.stm.ZSTM
-import zio.{Duration, Tag, ULayer, ZIO}
+import zio.stream.ZChannel
+import zio.{Duration, Tag, ULayer, ZIO, ZLayer}
 import zkanren.internal
 
 private[zkanren] trait Api extends Api.Exports with Api.FreshQuery with Api.Micro with Api.Implicits
@@ -169,56 +170,42 @@ private[zkanren] object Api {
     @inline def query8[R, X, A, B, C, D, E, F, G, H]    = _query(lvar8[A, B, C, D, E, F, G, H]).apply[R, X] _
     @inline def query9[R, X, A, B, C, D, E, F, G, H, I] = _query(lvar9[A, B, C, D, E, F, G, H, I]).apply[R, X] _
 
-//    def termo1[R, X, A](f: LVar[A] => Goal[R, X]): LTerm[A] => Goal[R with Unify.U[A], X] =
-//      (t: LTerm[A]) => fresh1[A](v => v =:= t && f(v))
-//
-//    def termo2[R, X, A, B](
-//      f: ((LVar[A], LVar[B])) => Goal[R, X]
-//    ): (LTerm[A], LTerm[B]) => Goal[R with Unify.U[A] with Unify.U[B], X] =
-//      (a, b) => fresh2[A, B](v => v =:= (a, b) && f(v))
-//
-//    def termo3[R, X, A, B, C](
-//      f: ((LVar[A], LVar[B], LVar[C])) => Goal[R, X]
-//    )(implicit
-//      uA: Unify[R, X, A, A],
-//      uB: Unify[R, X, B, B],
-//      uC: Unify[R, X, C, C]
-//    ): (LTerm[A], LTerm[B], LTerm[C]) => Goal[R, X] =
-//      (a, b, c) => fresh3[A, B, C](v => v =:= (a, b, c) && f(v))
-//
-//    def termo4[R, X, A, B, C, D](
-//      f: ((LVar[A], LVar[B], LVar[C], LVar[D])) => Goal[R, X]
-//    )(implicit
-//      uA: Unify[R, X, A, A],
-//      uB: Unify[R, X, B, B],
-//      uC: Unify[R, X, C, C],
-//      uD: Unify[R, X, D, D]
-//    ): (LTerm[A], LTerm[B], LTerm[C], LTerm[D]) => Goal[R, X] =
-//      (a, b, c, d) => fresh4[A, B, C, D](v => v =:= (a, b, c, d) && f(v))
-//
-//    def termo5[R, X, A, B, C, D, E](
-//      f: ((LVar[A], LVar[B], LVar[C], LVar[D], LVar[E])) => Goal[R, X]
-//    )(implicit
-//      uA: Unify[R, X, A, A],
-//      uB: Unify[R, X, B, B],
-//      uC: Unify[R, X, C, C],
-//      uD: Unify[R, X, D, D],
-//      uE: Unify[R, X, E, E]
-//    ): (LTerm[A], LTerm[B], LTerm[C], LTerm[D], LTerm[E]) => Goal[R, X] =
-//      (a, b, c, d, e) => fresh5[A, B, C, D, E](v => v =:= (a, b, c, d, e) && f(v))
-//
-//    def termo6[R, X, A, B, C, D, E, F](
-//      m: ((LVar[A], LVar[B], LVar[C], LVar[D], LVar[E], LVar[F])) => Goal[R, X]
-//    )(implicit
-//      uA: Unify[R, X, A, A],
-//      uB: Unify[R, X, B, B],
-//      uC: Unify[R, X, C, C],
-//      uD: Unify[R, X, D, D],
-//      uE: Unify[R, X, E, E],
-//      uF: Unify[R, X, F, F]
-//    ): (LTerm[A], LTerm[B], LTerm[C], LTerm[D], LTerm[E], LTerm[F]) => Goal[R, X] =
-//      (a, b, c, d, e, f) => fresh6[A, B, C, D, E, F](v => v =:= (a, b, c, d, e, f) && m(v))
-//
+    import Unify.Unify1
+
+    def termo1[R, X, A](f: LVar[A] => Goal[R, X])(implicit u: Unify1[R, X, LTerm[A]]): LTerm[A] => Goal[R, X] =
+      (t: LTerm[A]) => fresh1[A](v => v =:= t && f(v))
+
+    def termo2[R, X, A, B](
+      f: ((LVar[A], LVar[B])) => Goal[R, X]
+    )(implicit u: Unify1[R, X, (LTerm[A], LTerm[B])]): (LTerm[A], LTerm[B]) => Goal[R, X] =
+      (a, b) => fresh2[A, B](v => v =:= (a, b) && f(v))
+
+    def termo3[R, X, A, B, C](
+      f: ((LVar[A], LVar[B], LVar[C])) => Goal[R, X]
+    )(implicit u: Unify1[R, X, (LTerm[A], LTerm[B], LTerm[C])]): (LTerm[A], LTerm[B], LTerm[C]) => Goal[R, X] =
+      (a, b, c) => fresh3[A, B, C](v => v =:= (a, b, c) && f(v))
+
+    def termo4[R, X, A, B, C, D](
+      f: ((LVar[A], LVar[B], LVar[C], LVar[D])) => Goal[R, X]
+    )(implicit
+      u: Unify1[R, X, (LTerm[A], LTerm[B], LTerm[C], LTerm[D])]
+    ): (LTerm[A], LTerm[B], LTerm[C], LTerm[D]) => Goal[R, X] =
+      (a, b, c, d) => fresh4[A, B, C, D](v => v =:= (a, b, c, d) && f(v))
+
+    def termo5[R, X, A, B, C, D, E](
+      f: ((LVar[A], LVar[B], LVar[C], LVar[D], LVar[E])) => Goal[R, X]
+    )(implicit
+      u: Unify1[R, X, (LTerm[A], LTerm[B], LTerm[C], LTerm[D], LTerm[E])]
+    ): (LTerm[A], LTerm[B], LTerm[C], LTerm[D], LTerm[E]) => Goal[R, X] =
+      (a, b, c, d, e) => fresh5[A, B, C, D, E](v => v =:= (a, b, c, d, e) && f(v))
+
+    def termo6[R, X, A, B, C, D, E, F](
+      m: ((LVar[A], LVar[B], LVar[C], LVar[D], LVar[E], LVar[F])) => Goal[R, X]
+    )(implicit
+      u: Unify1[R, X, (LTerm[A], LTerm[B], LTerm[C], LTerm[D], LTerm[E], LTerm[F])]
+    ): (LTerm[A], LTerm[B], LTerm[C], LTerm[D], LTerm[E], LTerm[F]) => Goal[R, X] =
+      (a, b, c, d, e, f) => fresh6[A, B, C, D, E, F](v => v =:= (a, b, c, d, e, f) && m(v))
+
   }
 
   trait Eventually {
@@ -241,31 +228,32 @@ private[zkanren] object Api {
       predicate: A => Boolean
     ): Goal[Any, Nothing] = satisfyZIO(v, timeout)(a => ZIO.succeed(predicate(a)))
 
-//    def unify[R, E, A, B](
-//      a: LTerm[A],
-//      b: LTerm[B],
-//      timeout: Duration = Duration.Infinity
-//    ): Goal[Unify[Any, Nothing, A, B] with Unify[Any, Nothing, A, A] with Unify[Any, Nothing, B, B] with R, E] = {
-//      import zkanren.{fresh2, all}
-//      fresh2[A, B] { case (vA: LVar[A], vB: LVar[B]) =>
-//        def eff(s: State): ZIO[R, Nothing, Chan[R, E]] = State
-//          .reifyEventually(vA)
-//          .zip(State.reifyEventually(vB))
-//          .flatMap { case (a, b) =>
-//            ZSTM.serviceWith[Unify[Any, Nothing, A, B]](_(a, b).toChannel)
-//          }
-//          .commit
-//          .timeout(timeout)
-//          .map(_.getOrElse(ZChannel.write(Left(s))))
-//          .provideSomeLayer[R](ZLayer.succeed(s))
-//
-//        all(
-//          a =:= vA,
-//          b =:= vB,
-//          Goal.fromReadLoop(s => ZChannel.unwrap(eff(s)))
-//        )
-//      }
-//    }
+    import Unify.Unify1T
+
+    def unify[R, E, A, B](
+      a: LTerm[A],
+      b: LTerm[B],
+      timeout: Duration = Duration.Infinity
+    )(implicit ua: Unify1T[R, E, A], ub: Unify1T[R, E, B], uab: Unify[R, E, A, B]): Goal[R, E] = {
+      import zkanren._
+      import Goal.Chan
+      fresh2[A, B] { case (vA: LVar[A], vB: LVar[B]) =>
+        def eff(s: State): ZIO[R, Nothing, Chan[R, E]] = State
+          .reifyEventually(vA)
+          .zip(State.reifyEventually(vB))
+          .map { case (a, b) => uab(a, b).toChannel }
+          .commit
+          .timeout(timeout)
+          .map(_.getOrElse(ZChannel.write(Left(s))))
+          .provideSomeLayer[R](ZLayer.succeed(s))
+
+        all(
+          a =:= vA,
+          b =:= vB,
+          Goal.fromReadLoop(s => ZChannel.unwrap(eff(s)))
+        )
+      }
+    }
 
   }
 
