@@ -65,9 +65,9 @@ object ZKanrenSpec extends ZIOSpecDefault {
 
   private val testUnificationDifferentTypes =
     test("unification over different types") {
-      val unifyStringLength = Unify.terms[Any, Nothing, String, Int] {
+      lazy val unifyStringLength = Unify.terms[Any, Nothing, String, Int] {
         case (s: LVal[String], n: LTerm[Int]) => s.value.length =:= n
-        case _                                => Goal.reject
+        case (s, n)                           => unifyStringLength(s, n)
       }
 
       val program = query1[Any, Nothing, Int] { a =>
