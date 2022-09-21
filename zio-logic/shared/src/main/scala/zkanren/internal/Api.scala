@@ -172,38 +172,46 @@ private[zkanren] object Api {
 
     import Unify.Unify1
 
-    def termo1[R, X, A](f: LVar[A] => Goal[R, X])(implicit u: Unify1[R, X, LTerm[A]]): LTerm[A] => Goal[R, X] =
+    type Termo1[-R, +X, -A]                     = LTerm[A] => Goal[R, X]
+    type Termo2[-R, +X, -A, -B]                 = (LTerm[A], LTerm[B]) => Goal[R, X]
+    type Termo3[-R, +X, -A, -B, -C]             = (LTerm[A], LTerm[B], LTerm[C]) => Goal[R, X]
+    type Termo4[-R, +X, -A, -B, -C, -D]         = (LTerm[A], LTerm[B], LTerm[C], LTerm[D]) => Goal[R, X]
+    type Termo5[-R, +X, -A, -B, -C, -D, -E]     = (LTerm[A], LTerm[B], LTerm[C], LTerm[D], LTerm[E]) => Goal[R, X]
+    type Termo6[-R, +X, -A, -B, -C, -D, -E, -F] =
+      (LTerm[A], LTerm[B], LTerm[C], LTerm[D], LTerm[E], LTerm[F]) => Goal[R, X]
+
+    def termo1[R, X, A](f: LVar[A] => Goal[R, X])(implicit u: Unify1[R, X, LTerm[A]]): Termo1[R, X, A] =
       (t: LTerm[A]) => fresh1[A](v => v =:= t && f(v))
 
     def termo2[R, X, A, B](
       f: ((LVar[A], LVar[B])) => Goal[R, X]
-    )(implicit u: Unify1[R, X, (LTerm[A], LTerm[B])]): (LTerm[A], LTerm[B]) => Goal[R, X] =
+    )(implicit u: Unify1[R, X, (LTerm[A], LTerm[B])]): Termo2[R, X, A, B] =
       (a, b) => fresh2[A, B](v => v =:= (a, b) && f(v))
 
     def termo3[R, X, A, B, C](
       f: ((LVar[A], LVar[B], LVar[C])) => Goal[R, X]
-    )(implicit u: Unify1[R, X, (LTerm[A], LTerm[B], LTerm[C])]): (LTerm[A], LTerm[B], LTerm[C]) => Goal[R, X] =
+    )(implicit u: Unify1[R, X, (LTerm[A], LTerm[B], LTerm[C])]): Termo3[R, X, A, B, C] =
       (a, b, c) => fresh3[A, B, C](v => v =:= (a, b, c) && f(v))
 
     def termo4[R, X, A, B, C, D](
       f: ((LVar[A], LVar[B], LVar[C], LVar[D])) => Goal[R, X]
     )(implicit
       u: Unify1[R, X, (LTerm[A], LTerm[B], LTerm[C], LTerm[D])]
-    ): (LTerm[A], LTerm[B], LTerm[C], LTerm[D]) => Goal[R, X] =
+    ): Termo4[R, X, A, B, C, D] =
       (a, b, c, d) => fresh4[A, B, C, D](v => v =:= (a, b, c, d) && f(v))
 
     def termo5[R, X, A, B, C, D, E](
       f: ((LVar[A], LVar[B], LVar[C], LVar[D], LVar[E])) => Goal[R, X]
     )(implicit
       u: Unify1[R, X, (LTerm[A], LTerm[B], LTerm[C], LTerm[D], LTerm[E])]
-    ): (LTerm[A], LTerm[B], LTerm[C], LTerm[D], LTerm[E]) => Goal[R, X] =
+    ): Termo5[R, X, A, B, C, D, E] =
       (a, b, c, d, e) => fresh5[A, B, C, D, E](v => v =:= (a, b, c, d, e) && f(v))
 
     def termo6[R, X, A, B, C, D, E, F](
       m: ((LVar[A], LVar[B], LVar[C], LVar[D], LVar[E], LVar[F])) => Goal[R, X]
     )(implicit
       u: Unify1[R, X, (LTerm[A], LTerm[B], LTerm[C], LTerm[D], LTerm[E], LTerm[F])]
-    ): (LTerm[A], LTerm[B], LTerm[C], LTerm[D], LTerm[E], LTerm[F]) => Goal[R, X] =
+    ): Termo6[R, X, A, B, C, D, E, F] =
       (a, b, c, d, e, f) => fresh6[A, B, C, D, E, F](v => v =:= (a, b, c, d, e, f) && m(v))
 
   }
@@ -293,6 +301,19 @@ private[zkanren] object Api {
 //
 //  }
 
-  trait Relations {}
+  trait Relations {
+    import zkanren._
+
+    //    def conso[R, E, A](h: LTerm[A], t: LTerm[Iterable[LTerm[A]]], o: LTerm[Iterable[LTerm[A]]])(implicit
+//      ua: Unify1[R, E, LTerm[A]]
+//    ) = {
+//      val x = Unify.terms[R, E, A, Iterable[LTerm[A]]] {
+//        case (a, it) => ???
+//      }
+//
+//      ???
+//    }
+
+  }
 
 }
