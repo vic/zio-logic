@@ -1,7 +1,8 @@
 package zkanren.internal
 
+import zio.stm.ZSTM
 import zio.stream.{ZChannel, ZPipeline, ZStream}
-import zio.{Chunk, ZIO, ZLayer}
+import zio.{CanFail, Chunk, Tag, ZIO, ZLayer}
 
 final class Goal[-R, +E] private[Goal] (private val channel: Goal.Chan[R, E]) extends AnyVal { self =>
   @inline def and[R1 <: R, E1 >: E](goal: Goal[R1, E1]): Goal[R1, E1] =
@@ -66,11 +67,14 @@ object Goal {
     fromReadLoop[R, E](ch)
   }
 
-  def fromZIO[R, E](f: ZIO[R with State, E, Either[State, State]]): Goal[R, E] =
-    fromReadLoop[R, E](ZChannel.write(_).mapOutZIO(s => f.provideSomeLayer[R](ZLayer.succeed(s))))
+  def fromZIOAccept[R, E: CanFail](f: ZIO[R, E, Any]): Goal[R, Nothing] =
+    unwrap[R, Nothing](f.either.fold(_ => Goal.reject, _ => Goal.accept))
 
-  def fromZIOPredicate[R, E](predicate: ZIO[R with State, E, Boolean]): Goal[R, E] =
-    fromZIO[R, E](ZIO.serviceWithZIO[State](s => predicate.map(Either.cond(_, s, s))))
+  def fromZIOVal[R, E, A: Tag](z: ZIO[R, E, A])(f: LVal[A] => Goal[R, E]): Goal[R, E] =
+    unwrap[R, E](z.map(LVal(_)).map(f))
+
+  def fromZIOTerm[R, E, A](z: ZIO[R, E, LTerm[A]])(f: LTerm[A] => Goal[R, E]): Goal[R, E] =
+    unwrap[R, E](z.map(f))
 
   def fromReadLoop[R, E](read: State => Chan[R, E]): Goal[R, E] = {
     lazy val channel: Chan[R, E] =
@@ -81,6 +85,12 @@ object Goal {
       )
     Goal.fromChannel(channel)
   }
+
+  def unwrap[R, E](z: ZIO[R with State, E, Goal[R, E]]): Goal[R, E] =
+    Goal.fromReadLoop[R, E](s =>
+      ZChannel.write(s) >>>
+        ZChannel.unwrap(z.map(_.toChannel).provideSomeLayer[R](ZLayer.succeed(s)))
+    )
 
   // Swaps a goal exit status, making it fail if successful or the other way around.
   def swap[R, E](g: Goal[R, E]): Goal[R, E] =
@@ -94,7 +104,7 @@ object Goal {
 
   // Creates a new branch of state so that changes are not shared.
   def branch: Goal[Any, Nothing] =
-    fromZIO[Any, Nothing](ZIO.serviceWithZIO[State](_.branch.commit.map(Right(_))))
+    unwrap(ZSTM.serviceWithSTM[State](_.branch).map(s => Goal.fromChannel(ZChannel.write(Right(s)))).commit)
 
   // Performs a given goal in a temporary state branch and restores to the original state at the end.
   def peek[R, E](g: Goal[R, E]): Goal[R, E] =
